@@ -4,13 +4,12 @@ import (
 	"bufio"
 	"fmt"
 	"net/url"
-	"github.com/jordan-wright/email"
+	"github.com/jhillyerd/enmime"
 	"html"
 	"net/http"
 	"os"
 	"strings"
 	"time"
-	//			"github.com/jaytaylor/html2text"
 	"github.com/laochailan/notmuch-go"
 	"github.com/spf13/viper"
 )
@@ -33,36 +32,66 @@ func CloseNmdb() {
 func HdlRes(r http.ResponseWriter, q *http.Request) {
 	if q.FormValue("q") == "js" {
 		r.Header().Set("Content-type", "text/javascript")
-		fmt.Fprint(r, ` function read(id) {
-			fetch("/read?id="+encodeURIComponent(id)).then(function(response) { response.text().then(function(txt) { var e=document.getElementById("showmsg"); e.innerHTML=txt; e.scrollTop=0; }); });
+		fmt.Fprint(r, `
+		var hRows={};
+		var curId=false; 
+		var gnextId=false; 
+		function read(id) {
+			var x=document.getElementsByClassName('rowselected')
+			if(x[0]) x[0].className="msglistRow";
+			hRows[id].className=hRows[id].className+" rowselected";
+			curId=id;
+			gnextId=hRows[curId].getAttribute("data-nextid");
+			var e=document.getElementById("showmsg"); 
+			e.innerHTML='';
+			fetch("/read?id="+encodeURIComponent(id)).then(function(response) { 
+				response.text().then(function(txt) { 
+					if(curId==id) e.innerHTML=txt; 
+				}); 
+			});
+		}
+		document.addEventListener("keydown", function(e) {
+			if(e.keyCode==46 && e.shiftKey) {
+				console.log('delete '+curId+' nextid='+gnextId);	
+				var hh=hRows[curId].innerHeight;
+				hRows[curId].innerHTML=" -- killed --";
+				var dd=document.getElementById("msglistContainer");
+				dd.scrollTop=dd.scrollTop+20;
+				window.fetch('/?q=mid:'+encodeURIComponent(curId+' //+killed')+'&onlyretag=1');
+				read(gnextId);
 			}
+		});
 		document.addEventListener("DOMContentLoaded", function(e) {
 			var cont=document.getElementById('msglistContainer');
 			cont.style.height=( (window.innerHeight-30)*.4)+'px';
 			var cont2=document.getElementById('showmsg');
 			cont2.style.height=( (window.innerHeight-30)*.6 )+'px';
 			var rows=document.getElementsByClassName('msglistRow');
-			for(el in rows) {
+			for(var el=0;el<rows.length;el++) {
 				var elt=rows[el];
+				var nextid=rows[(el+1)%rows.length].getAttribute("data-mid");
+				elt.setAttribute("data-nextid",nextid);
+				hRows[elt.getAttribute("data-mid")]=elt;
 				elt.onclick=function(ee) { 
 					read(ee.currentTarget.getAttribute("data-mid")); 
-					var x=document.getElementsByClassName('rowselected')
-					if(x[0]) x[0].className="msglistRow";
-					ee.currentTarget.className=ee.currentTarget.className+" rowselected";
-
-					};
-			} });
+				};
+			}
+			document.title="📧 ("+rows.length+") CountablyMany";
+		});
     `)
 	} else if q.FormValue("q") == "css" {
 		r.Header().Set("Content-type", "text/css")
-		fmt.Fprint(r, `body{font-size:11pt;margin:0;padding:0}
-input{font-size:11pt;}
+		fmt.Fprint(r, `body{font-size:10pt;margin:0;padding:0;font-family:monospace}
+input{font-size:10pt;width:100%;font-family:monospace}
 #topbar { height:25px;   }
-		#msglistContainer { height: 250px; overflow-y:scroll;overflow-x:hidden }
+		#msglistContainer { height: 250px; overflow-y:scroll;overflow-x:hidden;border-bottom:1px solid black }
 #showmsg { height:250px; overflow-y:scroll;overflow-x:hidden }
 .msglistRow:nth-child(even) { background-color: #eee; }
+.msglistRow span { display:inline-block; white-space:nowrap; text-overflow:ellipsis; overflow:hidden; }
 .msglistRow span:nth-child(1) { padding-right: 5px; }
-.msglistRow span:nth-child(2) { color:#007d9c; padding-right: 15px; }
+.msglistRow span:nth-child(2) { max-width:450px; color:#007d9c; padding-right: 15px; }
+.msglistRow span:nth-child(3) { max-width:550px; padding-right: 15px; }
+.msglistRow span:nth-child(4) { color:#9b007c; padding-right: 15px; }
 //.msglistRow:hover { background-color:#fc0; } 
 .rowselected { background-color:#baccdd !important; }
 #headers { background-color: #d3dfea; margin-bottom:10px }
@@ -77,22 +106,70 @@ func HdlRoot(r http.ResponseWriter, q *http.Request) {
 	if query=="" {
 		query="tag:inbox";
 	}
+	querys:=strings.Split(query," //")
+	AddTags:=[]string{};
+	RemoveTags:=[]string{};
 	OpenNmdb()
 	defer CloseNmdb()
+	if(len(querys)>1) {
+		query=querys[0]
+		//fmt.Println("retag query "+querys[1])
+		tagmods:=strings.Split(querys[1]," ")
+		for _,tag:=range tagmods {
+			if(tag[0]=='+') {
+				AddTags=append(AddTags,tag[1:]);
+			} else {
+				RemoveTags=append(RemoveTags,tag[1:]);
+			}
+		}
+		nmqq:=Nmdb.CreateQuery(query)
+		if nmqq==nil {
+			fmt.Fprintf(r,"can't create query "+query)
+			return
+		}
+		msgss:=nmqq.SearchMessages()
+		if msgss==nil {
+			fmt.Fprintf(r,"Can't search messages query "+query)
+			return
+		}
+		for ; msgss.Valid() ; msgss.MoveToNext() {
+			msgg:=msgss.Get()
+			for _,tag:=range AddTags {
+				msgg.AddTag(tag);
+			}
+			for _,tag:=range RemoveTags {
+				msgg.RemoveTag(tag);
+			}
+		}
+		if(q.FormValue("onlyretag")!="1") {
+			http.Redirect(r,q,"/?q="+query,302)
+		} else {
+			fmt.Fprintf(r,"ok")
+		}
+		return
+
+	}
 	nmq := Nmdb.CreateQuery(query)
+	if nmq==nil {
+		fmt.Fprint(r,"Can't create query "+query)
+		return
+	}
 	fmt.Fprintf(r, `<!doctype html>
 	<html>
 	<head>
-	<title>CountablyMany</title>
-	</head>
 	<script src=/res?q=js></script>
 	<link rel=stylesheet href=/res?q=css>
-	<link href="https://fonts.googleapis.com/css?family=Raleway&display=swap" rel="stylesheet">
-	<body><div id=topbar><form><input id=query name=q value='`+query+ `'><button href=/>&times;</button>
+	</head>
+	<body><div id=topbar><form><input id=query name=q value='`+query+ `'>
 	<div id=msglistContainer>`)
 	dateND := time.Now().Format("02/01/2006")
 	i := 0
-	for msgs := nmq.SearchMessages(); msgs.Valid() && i < limit; msgs.MoveToNext() {
+	msgs := nmq.SearchMessages()
+	if(msgs==nil) {
+		fmt.Fprintf(r,"Can't search messages, query "+query)
+		return
+	}
+	for ; msgs.Valid() && i < limit; msgs.MoveToNext() {
 		i++
 		msg := msgs.Get()
 		dateU, _ := msg.GetDate()
@@ -103,10 +180,11 @@ func HdlRoot(r http.ResponseWriter, q *http.Request) {
 		}
 		from := msg.GetHeader("From")
 		fromfmt := strings.Split(strings.ReplaceAll(from, "\"", ""), "<")[0]
-		fmt.Fprintf(r, "<div class=msglistRow data-mid='%s'><span>%s</span><span>%s</span><span>%s</span></div>", msg.GetMessageId(), datelbl, fromfmt, html.EscapeString(msg.GetHeader("Subject")))
-		/*for tags:=msg.GetTags() ; tags.Valid() ; tags.MoveToNext() {
-			fmt.Fprintf(r, tags.Get())
-		} */
+		fmt.Fprintf(r, "<div class=msglistRow data-mid='%s'><span>%s</span><span>%s</span><span>%s</span><span>", msg.GetMessageId(), datelbl, fromfmt, html.EscapeString(msg.GetHeader("Subject")))
+		for tags:=msg.GetTags() ; tags.Valid() ; tags.MoveToNext() {
+			fmt.Fprintf(r, tags.Get()+" ")
+		} 
+		fmt.Fprintf(r, "</span></div>");
 	}
 	fmt.Fprintf(r, "</div><div id=showmsg></div></body></html>")
 
@@ -152,26 +230,30 @@ func HdlRead(r http.ResponseWriter, q *http.Request) {
 	defer CloseNmdb()
 	id := q.FormValue("id")
 	file := GetMessageFile(r,q)
-	mail, err2 := email.NewEmailFromReader(bufio.NewReader(file))
+	mail, err2 := enmime.ReadEnvelope(bufio.NewReader(file))
 	if err2 != nil {
-		//fmt.Fprint(r, "Can't parse mail in "+fname)
+		fmt.Fprint(r, "Can't parse mail id "+id)
+		return
 	}
-	fmt.Fprint(r, "<div id=headers><table><tr><td><b>From</b><td>"+mail.From+"<tr><td><b>To</b><td>"+html.EscapeString(strings.Join(mail.To,","))+"<tr><td><b>Cc</b><td>"+html.EscapeString(strings.Join(mail.Cc,","))+"<tr><td><b>Subject</b><td>"+html.EscapeString(mail.Subject)+"<tr><td><b>Date</b><td>"+html.EscapeString(mail.Headers.Get("Date"))+"</table></div>")
+	fmt.Fprint(r, "<div id=headers><table><tr><td><b>From</b><td>"+mail.GetHeader("From")+
+	"<tr><td><b>To</b><td>"+html.EscapeString(mail.GetHeader("To")+", "+mail.GetHeader("Cc"))+
+	"<tr><td><b>Subject</b><td>"+html.EscapeString(mail.GetHeader("Subject"))+
+	"<tr><td><b>Date</b><td>"+html.EscapeString(mail.GetHeader("Date"))+"</table>")
+
 	fmt.Fprint(r, "<div id=attachments><a href=/source?id="+url.QueryEscape(id)+" target=_new>source</a><br>")
-	i:=0
-	fmt.Println(mail.Attachments)
-	for _,att:=range mail.Attachments {
-		url:="/attachget?mid="+id+"&aid="+string(i)
+	for _,att:=range append(mail.Attachments,mail.Inlines...) {
+		url:="/attachget?id="+url.QueryEscape(id)+"&cid="+url.QueryEscape(att.FileName)
 		url1:=url+"&mode=inline"
 		url2:=url+"&mode=attach"
-		fmt.Fprint(r,"<a href="+url1+" target=_new>"+att.Filename+"</a> <a href="+url2+">[dl]</a><br>")
-		i++
+		fmt.Fprint(r,"<a href="+url1+" target=_new>"+att.FileName+"</a> ("+att.ContentType+") <a href="+url2+">[dl]</a><br>")
 	}
-	fmt.Fprint(r,"</div>")
+
+
+	fmt.Fprint(r,"</div></div>")
 	htmlmail := string(mail.HTML)
 	if htmlmail == "" {
 		htmlmail = string(mail.Text)
-		htmlmail = "<tt>" + strings.ReplaceAll(htmlmail, "\n", "<br>") + "</tt>"
+		htmlmail = strings.ReplaceAll(htmlmail, "\n", "<br>")
 	}
 	fmt.Fprint(r, htmlmail)
 
@@ -186,8 +268,32 @@ func HdlReply(r http.ResponseWriter, q *http.Request) {
 }
 
 func HdlAttachGet(r http.ResponseWriter, q *http.Request) {
-
+	sendCSP(r)
+	OpenNmdb()
+	defer CloseNmdb()
+	cid := q.FormValue("cid")
+	mode := q.FormValue("mode")
+	file := GetMessageFile(r,q)
+	mail, err2 := enmime.ReadEnvelope(bufio.NewReader(file))
+	if err2 != nil {
+		fmt.Fprint(r, "Can't parse mail")
+		return
+	}
+	for _,att:=range append(mail.Attachments,mail.Inlines...) {
+		if att.FileName==cid {
+			r.Header().Set("Content-type: ",att.ContentType)
+			if(mode=="attach") {
+				r.Header().Set("Content-disposition","attachment;filename=\""+att.FileName+"\"")
+			} else {
+				r.Header().Set("Content-disposition","inline")
+			}
+			fmt.Fprintf(r, "%s", att.Content);
+			break;
+		}
+	}
+	fmt.Fprint(r, "CID not found in mail")
 }
+
 func main() {
 	viper.SetDefault("ListenAddr", ":1336")
 	viper.SetDefault("NotmuchDB", "/home/al/Mail/")
