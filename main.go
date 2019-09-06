@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"github.com/jhillyerd/enmime"
 	"html"
+	"hash/crc64"
 	"net/http"
 	"os"
 	"strings"
@@ -19,6 +20,7 @@ func sendCSP(r http.ResponseWriter) {
 }
 
 var Nmdb *notmuch.Database
+var ResetCacheMTime int64
 
 func OpenNmdb() {
 	Nmdb, _ = notmuch.OpenDatabase(viper.GetString("NotmuchDB"), notmuch.DATABASE_MODE_READ_WRITE)
@@ -111,6 +113,7 @@ func HdlCmd(r http.ResponseWriter, q *http.Request) {
 		fmt.Fprintf(r,"Can't search messages, query "+query)
 		return
 	}
+	outstr:=""
 	for ; msgs.Valid() && i < limit; msgs.MoveToNext() {
 		i++
 		msg := msgs.Get()
@@ -122,14 +125,17 @@ func HdlCmd(r http.ResponseWriter, q *http.Request) {
 		}
 		from := msg.GetHeader("From")
 		fromfmt := strings.Split(strings.ReplaceAll(from, "\"", ""), "<")[0]
-		fmt.Fprintf(r, "<div class=msglistRow data-mid='%s'><span>%s</span><span>%s</span><span>%s</span><span>", msg.GetMessageId(), datelbl, fromfmt, html.EscapeString(msg.GetHeader("Subject")))
+		outstr=outstr+fmt.Sprintf("<div class=msglistRow data-mid='%s'><span>%s</span><span>%s</span><span>%s</span><span>", msg.GetMessageId(), datelbl, fromfmt, html.EscapeString(msg.GetHeader("Subject")))
 		for tags:=msg.GetTags() ; tags.Valid() ; tags.MoveToNext() {
-			fmt.Fprintf(r, tags.Get()+" ")
+			outstr=outstr+tags.Get()+" "
 		} 
-		fmt.Fprintf(r, "</span></div>");
+		outstr=outstr+"</span></div>"
 	}
-	fmt.Fprintf(r, "</div>")
-
+	outstr=outstr+"</div>"
+	if HandleEtag(r,q,ETagS(outstr)) {
+		return
+	}
+	fmt.Fprintf(r,outstr)
 }
 
 func GetMessageFile(r http.ResponseWriter, q *http.Request) (*os.File,string) {
@@ -157,12 +163,47 @@ func HdlSource(r http.ResponseWriter, q *http.Request) {
 	http.ServeFile(r,q,fname)
 }
 
+func ETagF(fnam string) string {
+	ResetCacheL,err:=os.Lstat(".reset_cache")
+	if err!=nil {
+		ResetCacheMTime=0
+	} else {
+		ResetCacheMTime=ResetCacheL.ModTime().Unix()
+	}
+	lst,_:=os.Lstat(fnam)
+	mtime:=lst.ModTime().Unix()
+	return fmt.Sprintf("%x%x", ResetCacheMTime, mtime)
+}
+
+func ETagS(str string) string {
+	ResetCacheL,err:=os.Lstat(".reset_cache")
+	if err!=nil {
+		ResetCacheMTime=0
+	} else {
+		ResetCacheMTime=ResetCacheL.ModTime().Unix()
+	}
+	return fmt.Sprintf("%x%x", ResetCacheMTime, crc64.Checksum([]byte(str),crc64.MakeTable(crc64.ECMA)) )
+}
+
+func HandleEtag(r http.ResponseWriter, q *http.Request, etag string) bool {
+	r.Header().Set("ETag",etag)
+	if q.Header.Get("If-None-Match")==etag {
+		r.WriteHeader(304)
+		return true
+	}
+	return false
+}
+
+
 func HdlRead(r http.ResponseWriter, q *http.Request) {
 	sendCSP(r)
 	OpenNmdb()
 	defer CloseNmdb()
 	id := q.FormValue("id")
 	file,fname := GetMessageFile(r,q)
+	if HandleEtag(r,q,ETagF(fname)) {
+		return
+	}
 	mail, err2 := enmime.ReadEnvelope(bufio.NewReader(file))
 	if err2 != nil {
 		fmt.Fprint(r, "Can't parse mail id "+id)
@@ -206,7 +247,10 @@ func HdlAttachGet(r http.ResponseWriter, q *http.Request) {
 	defer CloseNmdb()
 	cid := q.FormValue("cid")
 	mode := q.FormValue("mode")
-	file,_ := GetMessageFile(r,q)
+	file,fname := GetMessageFile(r,q)
+	if HandleEtag(r,q,ETagF(fname)) {
+		return
+	}
 	mail, err2 := enmime.ReadEnvelope(bufio.NewReader(file))
 	if err2 != nil {
 		fmt.Fprint(r, "Can't parse mail")
