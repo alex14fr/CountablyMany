@@ -147,6 +147,20 @@ document.addEventListener("keydown", function(e) {
 		o.focus();
 	}
 
+	else if(e.key=="q") {
+		loadmsglist(document.getElementById("query").value);
+	}
+
+	else if(e.key=="Q") {
+		fetch("/reload");
+	}
+
+	else if(e.key=="Z") {
+		document.body.innerHTML="";
+		document.location.hash="";
+		document.location="https://x:x@"+document.location.host; 
+	}
+
 	e.preventDefault();
 });
 
@@ -166,7 +180,7 @@ document.addEventListener("DOMContentLoaded", function(e) {
 		commandMode=true;
 		updCmdModeIndicator();
 	});
-
+	window.setInterval(function() { if(document.getElementById("query").value=="") { loadmsglist(""); } }, 300000);
 
 });
 
