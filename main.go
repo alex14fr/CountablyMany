@@ -2,18 +2,23 @@ package main
 
 import (
 	"bufio"
+	"io/ioutil"
 	"fmt"
 	"github.com/jhillyerd/enmime"
 	"github.com/laochailan/notmuch-go"
 	"github.com/spf13/viper"
 	"hash/crc64"
 	"html"
+	"math/rand"
 	"net/http"
+	_ "net/mail"
+	"net/smtp"
 	"net/url"
 	"os"
 	"os/exec"
 	"strings"
 	"time"
+	"encoding/base64"
 )
 
 var Nmdb *notmuch.Database
@@ -28,12 +33,12 @@ func CloseNmdb() {
 }
 
 func HookAuth(r http.ResponseWriter, q *http.Request) bool {
-	lhash:=viper.GetString("LoginHash")
-	if lhash=="" {
+	lhash := viper.GetString("LoginHash")
+	if lhash == "" {
 		return false
 	}
-	if "Basic "+lhash!=q.Header.Get("Authorization") {
-		r.Header().Set("WWW-Authenticate","Basic realm=restricted")
+	if "Basic "+lhash != q.Header.Get("Authorization") {
+		r.Header().Set("WWW-Authenticate", "Basic realm=restricted")
 		r.WriteHeader(401)
 		return false
 	}
@@ -41,7 +46,7 @@ func HookAuth(r http.ResponseWriter, q *http.Request) bool {
 }
 
 func HdlRes(r http.ResponseWriter, q *http.Request) {
-	if !HookAuth(r,q) {
+	if !HookAuth(r, q) {
 		return
 	}
 	if q.FormValue("q") == "js" {
@@ -54,6 +59,10 @@ func HdlRes(r http.ResponseWriter, q *http.Request) {
 }
 
 func HdlCmd(r http.ResponseWriter, q *http.Request) {
+	if !HookAuth(r, q) {
+		return
+	}
+
 	limit := viper.GetInt("MaxMessages")
 	query := q.FormValue("q")
 	querys := strings.Split(query, "//")
@@ -166,6 +175,10 @@ func GetMessageFile(r http.ResponseWriter, q *http.Request) (*os.File, string) {
 }
 
 func HdlSource(r http.ResponseWriter, q *http.Request) {
+	if !HookAuth(r, q) {
+		return
+	}
+
 	r.Header().Set("Content-type", "text/plain")
 	OpenNmdb()
 	defer CloseNmdb()
@@ -205,6 +218,10 @@ func HandleETag(r http.ResponseWriter, q *http.Request, etag string) bool {
 }
 
 func HdlRead(r http.ResponseWriter, q *http.Request) {
+	if !HookAuth(r, q) {
+		return
+	}
+
 	OpenNmdb()
 	defer CloseNmdb()
 	id := q.FormValue("id")
@@ -241,14 +258,109 @@ func HdlRead(r http.ResponseWriter, q *http.Request) {
 }
 
 func HdlCompose(r http.ResponseWriter, q *http.Request) {
+	if !HookAuth(r, q) {
+		return
+	}
 
 }
 
+func headerStr(header string, value string) (s string) {
+	if value != "" {
+		return header + ": " + value + "\r\n"
+	} else {
+		return ""
+	}
+}
+
+func addAttach(r http.ResponseWriter, q *http.Request, suffix string, boundary string) string {
+	mpf,mpfh,er:=q.FormFile("attach"+suffix)
+	if er!=nil {
+		return ""
+	}
+	d,_:=ioutil.ReadAll(mpf)
+	return "\n--"+boundary+"\n"+
+					"Content-disposition: attachment;filename="+mpfh.Filename+"\n"+
+					"Content-type: "+mpfh.Header.Get("Content-type")+"\n"+
+					"Content-transfer-encoding: base64\n\n"+
+					base64.StdEncoding.EncodeToString(d)+"\n"
+}
+
+func HdlSend(r http.ResponseWriter, q *http.Request) {
+	if !HookAuth(r, q) {
+		return
+	}
+
+	composeText:=q.FormValue("compose")
+	composeText=strings.ReplaceAll(composeText,"\r","")
+
+	var identity string
+	fmt.Sscanf(composeText,"%s\n",&identity)
+
+	boundary := "b" + fmt.Sprintf("%x", rand.Uint64())
+	endheaders:="Date: "+time.Now().Format(time.RFC1123Z)+"\n"+
+			"Content-transfer-encoding: 8bit\n"+
+			"Content-type: multipart/alternative;boundary="+boundary+"\n"+
+			"MIME-Version: 1.0\n\n" +
+			"--" + boundary + "\n" +
+			"Content-type: text/plain;charset=utf8\n"+
+			"Content-transfer-encoding: 8bit\n"
+
+	composeText=strings.Replace(composeText,"@endheaders", endheaders, 1)
+	outId := (OutIdentities[identity]).(map[string]interface {})
+	from := outId["fromaddr"].(string)
+	fromName := outId["fromname"].(string)
+	replytoAddr,err := outId["replytoaddr"].(string)
+	headerTop:="From: "+fromName+" <"+from+">\n"
+	if !err && replytoAddr!="" {
+		headerTop+="Reply-to: <"+replytoAddr+">\n"
+	}
+
+	composeText += addAttach(r,q,"1",boundary)+
+						addAttach(r,q,"2",boundary)+
+						addAttach(r,q,"3",boundary)+
+						addAttach(r,q,"4",boundary)
+
+
+	composeText = strings.Replace(composeText,identity+"\n",headerTop,1)
+	composeText=strings.ReplaceAll(composeText,"\n","\r\n")
+
+	fmt.Println(composeText)
+
+	var toaddrlist,ccaddrlist string
+	fmt.Sscanf(strings.Split(composeText,"To: ")[1],"%s\r\n",&toaddrlist)
+	fmt.Sscanf(strings.Split(composeText,"Cc: ")[1],"%s\r\n",&ccaddrlist)
+	if ccaddrlist!="" {
+		toaddrlist=toaddrlist+","+ccaddrlist
+	}
+	toaddr:=strings.Split(toaddrlist,",")
+	er:=smtp.SendMail(outId["smtphost"].(string),
+		smtp.PlainAuth("", 
+						outId["smtpuser"].(string), 
+						outId["smtppass"].(string), 
+						strings.Split(outId["smtphost"].(string), ":")[0]),
+		from,
+		toaddr,
+		[]byte(composeText))
+	if(er!=nil) {
+		fmt.Fprint(r,"send failed: ",er)
+	} else {
+		fmt.Fprint(r,"send ok")
+	}
+	ioutil.WriteFile(outId["outfolder"].(string)+boundary,[]byte(composeText),0600)
+}
+
 func HdlReply(r http.ResponseWriter, q *http.Request) {
+	if !HookAuth(r, q) {
+		return
+	}
 
 }
 
 func HdlAttachGet(r http.ResponseWriter, q *http.Request) {
+	if !HookAuth(r, q) {
+		return
+	}
+
 	OpenNmdb()
 	defer CloseNmdb()
 	cid := q.FormValue("cid")
@@ -271,32 +383,41 @@ func HdlAttachGet(r http.ResponseWriter, q *http.Request) {
 				r.Header().Set("Content-disposition", "inline")
 			}
 			fmt.Fprintf(r, "%s", att.Content)
-			break
+			return
 		}
 	}
 	fmt.Fprint(r, "CID not found in mail")
 }
 
 func HdlResync(r http.ResponseWriter, q *http.Request) {
+	if !HookAuth(r, q) {
+		return
+	}
+
 	exec.Command(viper.GetString("ReloadCommand")).Run()
 	fmt.Fprint(r, "ok")
 }
 
+var OutIdentities map[string]interface{}
+
 func main() {
 	viper.SetDefault("ListenAddr", ":1336")
-	viper.SetDefault("TLSCert","cert.pem")
-	viper.SetDefault("TLSKey","key.pem")
-	viper.SetDefault("LoginHash","Y2hhbmdlOnRoaXM=") //change:this
+	viper.SetDefault("TLSCert", "cert.pem")
+	viper.SetDefault("TLSKey", "key.pem")
+	viper.SetDefault("LoginHash", "Y2hhbmdlOnRoaXM=") //change:this
 	viper.SetDefault("NotmuchDB", "/home/al/Mail/")
 	viper.SetDefault("MaxMessages", 30000)
-	viper.SetDefault("StartupCommand","/usr/bin/offlineimap")
-	viper.SetDefault("ReloadCommand","pkill -USR1 offlineimap")
+	viper.SetDefault("StartupCommand", "/usr/bin/offlineimap")
+	viper.SetDefault("ReloadCommand", "pkill -USR1 offlineimap")
 
 	viper.SetConfigName("CountablyMany")
 	viper.AddConfigPath(".")
 	viper.AddConfigPath(".config")
 	viper.ReadInConfig()
-	if cmd:=viper.GetString("StartupCommand");cmd!="" {
+
+	OutIdentities = viper.GetStringMap("OutIdentities")
+
+	if cmd := viper.GetString("StartupCommand"); cmd != "" {
 		go exec.Command(cmd).Run()
 	}
 	http.HandleFunc("/", HdlRes)
@@ -304,11 +425,12 @@ func main() {
 	http.HandleFunc("/read", HdlRead)
 	http.HandleFunc("/attachget", HdlAttachGet)
 	http.HandleFunc("/compose", HdlCompose)
+	http.HandleFunc("/send", HdlSend)
 	http.HandleFunc("/reply", HdlReply)
 	http.HandleFunc("/source", HdlSource)
 	http.HandleFunc("/resync", HdlResync)
-	if viper.GetString("TLSCert")!="" && viper.GetString("TLSKey")!="" {
-		http.ListenAndServeTLS(viper.GetString("ListenAddr"),viper.GetString("TLSCert"),viper.GetString("TLSKey"), nil)
+	if viper.GetString("TLSCert") != "" && viper.GetString("TLSKey") != "" {
+		http.ListenAndServeTLS(viper.GetString("ListenAddr"), viper.GetString("TLSCert"), viper.GetString("TLSKey"), nil)
 	} else {
 		http.ListenAndServe(viper.GetString("ListenAddr"), nil)
 	}

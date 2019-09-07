@@ -16,7 +16,30 @@
 		<input id=query name=q autocomplete=off>
 	</form>
 
-	<div id=cmdmodeindicator>-- C --</div>
+	<div id=cmdmodeindicator>
+		-- C --
+	</div>
+
+	<div id=composer>
+		<form method=post action=/send enctype=multipart/form-data>
+		<textarea name=compose rows=15 cols=80>
+default
+To: 
+Cc: 
+Bcc: 
+Subject: 
+In-reply-to: 
+References: 
+@endheaders
+
+		</textarea><p>
+		<input type=file name=attach1><p>
+		<input type=file name=attach2><p>
+		<input type=file name=attach3><p>
+		<input type=file name=attach4><p>
+		<input type=submit value=Send>
+		</form>
+	</div>
 </body>
 </html>
 

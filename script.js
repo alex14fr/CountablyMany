@@ -79,12 +79,17 @@ function cmdAndNext(cmd, text) {
 }
 
 var commandMode=true;
+var composeMode=false;
 
 function updCmdModeIndicator() {
 	document.getElementById('cmdmodeindicator').style.display=(commandMode?'inline':'none');
 }
 
 document.addEventListener("keydown", function(e) {
+	if(composeMode) {
+		return;
+	}
+
 	if(!commandMode) {
 		if(e.key=="Escape") {
 			commandMode=true;
@@ -161,10 +166,18 @@ document.addEventListener("keydown", function(e) {
 		document.location="https://x:x@"+document.location.host; 
 	}
 
+	else if(e.key=="c") {
+		window.open('#compose');
+	}
+
 	e.preventDefault();
 });
 
 document.addEventListener("DOMContentLoaded", function(e) {
+	if(document.location.hash=="#compose") {
+		toComposeMode();
+		return;
+	}
 	adjustsizes();
 	loadmsglist("");
 	document.getElementById("cmdForm").addEventListener("submit", function(e) {
@@ -186,4 +199,13 @@ document.addEventListener("DOMContentLoaded", function(e) {
 
 window.addEventListener("resize", adjustsizes);
 
+
+function toComposeMode() {
+	composeMode=true;
+	document.getElementById('msglistContainer').style.display='none';
+	document.getElementById('showmsg').style.display='none';
+	document.getElementById('cmdForm').style.display='none';
+	document.getElementById('composer').style.display='block';
+
+}
 
