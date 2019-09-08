@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"io/ioutil"
+	"path/filepath"
 	"fmt"
 	"github.com/jhillyerd/enmime"
 	"github.com/spf13/viper"
@@ -21,6 +22,7 @@ import (
 	"encoding/base64"
 )
 
+var separ string
 var ResetCacheMTime int64
 
 func HookAuth(r http.ResponseWriter, q *http.Request) bool {
@@ -58,20 +60,19 @@ func HdlCmd(r http.ResponseWriter, q *http.Request) {
 	}
 	query := q.FormValue("q")
 
-	SyncerIes=SyncerConfig.ReadIndexEntries()
 	querys := strings.Split(query, "##")
-	//var movedest, subject, back string
-	if len(querys) > 2 {
-	/*	movedest = querys[2]
-		subject = querys[1]
-		back = querys[0] */
-		fmt.Println("MOVE querys not handled yet")
-	}
-	if q.FormValue("onlymove") == "1" {
-		fmt.Fprintf(r, "ok")
+	if len(querys) > 1 {
+		subject := querys[0] 
+		movedest := querys[1]
+		subjectspl:=strings.Split(subject,"/")
+		fnam:=SyncerConfig.Path+separ+subjectspl[0]+separ+subjectspl[1]+separ+"moves"+separ+subjectspl[2]
+		cnt:=[]byte(movedest)
+		err:=ioutil.WriteFile(fnam,cnt,0600)
+		fmt.Fprint(r, "wrote "+string(cnt)+" in "+fnam+" ",err)
 		return
 	}
 
+	SyncerIes=SyncerConfig.ReadIndexEntries()
 	outstr := SyncerIes.ListMessagesHTML(query)
 
 	if HandleETag(r, q, ETagS(outstr)) {
@@ -82,8 +83,8 @@ func HdlCmd(r http.ResponseWriter, q *http.Request) {
 }
 
 func GetMessageFile(r http.ResponseWriter, q *http.Request) (*os.File, string) {
-	id := strings.ReplaceAll(q.FormValue("id"),"../","")
-	fname:=SyncerConfig.Path+"/"+id
+	id := strings.ReplaceAll(q.FormValue("id"),"..","")
+	fname:=SyncerConfig.Path+separ+id
 	file, err2 := os.Open(fname)
 	if err2 != nil {
 		fmt.Fprint(r, "Can't open "+fname)
@@ -110,7 +111,11 @@ func ETagF(fnam string) string {
 	} else {
 		ResetCacheMTime = ResetCacheL.ModTime().Unix()
 	}
-	lst, _ := os.Lstat(fnam)
+	lst, err := os.Lstat(fnam)
+	if err!=nil {
+		fmt.Println("ETagF: failed Lstat ",err)
+		return "0"
+	}
 	mtime := lst.ModTime().Unix()
 	return fmt.Sprintf("%x%x", ResetCacheMTime, mtime)
 }
@@ -317,6 +322,7 @@ func HdlResync(r http.ResponseWriter, q *http.Request) {
 var OutIdentities map[string]interface{}
 
 func main() {
+	separ=string(filepath.Separator)
 	if os.Getenv("SYNCER")=="1"  {
 		syncer.SyncerMain()
 		return

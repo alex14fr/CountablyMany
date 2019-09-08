@@ -3,6 +3,7 @@ package syncer
 import ( "fmt"
 			"crypto/tls"
 			"io/ioutil"
+			"path/filepath"
 			"io"
 			"bufio"
 			"strconv"
@@ -17,10 +18,13 @@ import ( "fmt"
 			"github.com/jhillyerd/enmime"
 			)
 
+var separ string
+
 type Account struct {
 	Server string
 	User string
 	Pass string
+	HasUidmove bool
 	Mailboxes map[string]string
 }
 
@@ -128,7 +132,7 @@ type IndexEntries []IndexEntry
 
 func (c Config) ReadIndexEntries() (ies IndexEntries) {
 	ies=IndexEntries{}
-	istr,err:=ioutil.ReadFile(c.Path+"/Index.yaml")
+	istr,err:=ioutil.ReadFile(c.Path+separ+"Index.yaml")
 	if err!=nil {
 		fmt.Println("! index read error: ",err)
 		return
@@ -146,7 +150,7 @@ func (c Config) WriteIndexEntries(ies IndexEntries) {
 		fmt.Println("! index marshal error: ",err)
 		return
 	}
-	err=ioutil.WriteFile(c.Path+"/Index.yaml",istr,0600)
+	err=ioutil.WriteFile(c.Path+separ+"Index.yaml",istr,0600)
 	if err!=nil {
 		fmt.Println("! index write error: ",err)
 	}
@@ -154,6 +158,7 @@ func (c Config) WriteIndexEntries(ies IndexEntries) {
 
 
 func ReadConfig() (Config) {
+	separ=string(filepath.Separator)
 	conf:=Config{}
 	confstr,err:=ioutil.ReadFile("Syncer.yaml")
 	if err!=nil {
@@ -244,7 +249,7 @@ func (imc *IMAPConn) AppendFile(c Config, accountname string, localmbname string
 	if(!allowDup) {
 		ies:=c.ReadIndexEntries()
 		mid:=getMidFromFile(filename)
-		if(ies.HasMessageID(mid,accountname,localmbname)) {
+		if(mid!="" && ies.HasMessageID(mid,accountname,localmbname)) {
 			err:="AppendFile "+filename+" would duplicate Message-ID "+mid+" in index for "+accountname+"/"+localmbname
 			fmt.Println(err)
 			return errors.New(err)
@@ -260,7 +265,7 @@ func (imc *IMAPConn) AppendFile(c Config, accountname string, localmbname string
 		ies:=c.ReadIndexEntries()
 		ies=append(ies,ie)
 		c.WriteIndexEntries(ies)
-		copyfile:=c.Path+"/"+accountname+"/"+localmbname+"/"+strconv.Itoa(int(uid))
+		copyfile:=c.Path+separ+accountname+separ+localmbname+separ+strconv.Itoa(int(uid))
 		err:=os.Link(filename, copyfile)
 		if err!=nil {
 			fmt.Println("AppendFile: link error",err)
@@ -282,7 +287,7 @@ func (imc *IMAPConn) AppendFilesInDir(c Config, account string, localmbname stri
 	for _,finf:=range finfs {
 		if !finf.IsDir() {
 			fmt.Println("AppendFilesInDir: appending "+finf.Name()+" in "+account+"/"+localmbname+"...")
-			imc.AppendFile(c,account,localmbname,directory+"/"+finf.Name(),allowDup,keepOrig)
+			imc.AppendFile(c,account,localmbname,directory+separ+finf.Name(),allowDup,keepOrig)
 		}
 	}
 }
@@ -329,13 +334,13 @@ func (imc *IMAPConn) FetchNewInMailbox(c Config, account string, localmbname str
 				fmt.Println("got uid lower than fromUid, skipping")
 			} else {
 				fmt.Println("writing to file...")
-				err=ioutil.WriteFile(c.Path+"/"+account+"/"+localmbname+"/"+strconv.Itoa(int(uid)),content,0600)
+				err=ioutil.WriteFile(c.Path+separ+account+separ+localmbname+separ+strconv.Itoa(int(uid)),content,0600)
 				if err!=nil {
 					fmt.Println("error WriteFile, can't continue : ",err)
 					return err
 				}
 				fmt.Println("inserting into index...")
-				ie:=MakeIEFromFile(c.Path+"/"+account+"/"+localmbname+"/"+strconv.Itoa(int(uid)))
+				ie:=MakeIEFromFile(c.Path+separ+account+separ+localmbname+separ+strconv.Itoa(int(uid)))
 				ie.U=uid
 				ie.A=account
 				ie.M=localmbname
@@ -343,7 +348,7 @@ func (imc *IMAPConn) FetchNewInMailbox(c Config, account string, localmbname str
 				checkAlready:=ies.searchMessageID(ie.I, account)
 				if checkAlready!=nil {
 					fmt.Println("was already in index, for mbox=",checkAlready.M," (foreign move ?)")
-					fmt.Println("keeping both")
+					fmt.Println("keeping both for now")
 				} 
 				ies=append(ies,ie)
 				c.WriteIndexEntries(ies)
@@ -356,21 +361,25 @@ func (imc *IMAPConn) FetchNewInMailbox(c Config, account string, localmbname str
 }
 
 func (imc *IMAPConn) MoveInMailbox(c Config,account string,localmbname string) error {
-	path:=c.Path+"/"+account+"/"+localmbname+"/moves"
+	path:=c.Path+separ+account+separ+localmbname+separ+"moves"
 	fmt.Println("performing moves in ",path,"...")
-	imc.WriteLine("x select "+c.Acc[account].Mailboxes[localmbname])
-	imc.ReadLine("x ")
+	mboxselected:=false
 	finfs,_:=ioutil.ReadDir(path)
 	for _,finf:=range finfs {
 		if !finf.IsDir() {
-				dest,_:=ioutil.ReadFile(path+"/"+finf.Name())
+				if !mboxselected {
+					imc.WriteLine("x select "+c.Acc[account].Mailboxes[localmbname])
+					imc.ReadLine("x ")
+					mboxselected=true
+				}
+				dest,_:=ioutil.ReadFile(path+separ+finf.Name())
 				fmt.Println("moving ",finf.Name()," to ",string(dest))
 				if strings.Index(string(dest),"KILL")==0 {
 					imc.WriteLine("x uid store "+finf.Name()+" flags \\Deleted")
 					imc.ReadLine("x ")
 					imc.WriteLine("x expunge")
 					imc.ReadLine("x ")
-					os.Remove(path+"/"+account+"/"+localmbname+"/"+finf.Name())
+					os.Remove(path+separ+account+separ+localmbname+separ+finf.Name())
 					ies:=c.ReadIndexEntries()
 					for i,ie:=range ies {
 						uid2kill,_:=strconv.Atoi(finf.Name())
@@ -382,11 +391,24 @@ func (imc *IMAPConn) MoveInMailbox(c Config,account string,localmbname string) e
 					}
 					c.WriteIndexEntries(ies)
 				} else {
-					imc.WriteLine("x uid move "+finf.Name()+" "+c.Acc[account].Mailboxes[string(dest)])
+					if c.Acc[account].HasUidmove {
+						imc.WriteLine("x uid move "+finf.Name()+" "+c.Acc[account].Mailboxes[string(dest)])
+					} else {
+						fmt.Println("move by copy and kill...")
+						imc.WriteLine("x uid copy "+finf.Name()+" "+c.Acc[account].Mailboxes[string(dest)])
+					}
 					var d,olduid,uid uint32
 					s,_:=imc.ReadLine("x OK")
 					fmt.Sscanf(s,"x OK [COPYUID %d %d %d",&d,&olduid,&uid)
 					fmt.Println("uid in orig folder is ",olduid, " uid in dest folder is ",uid)
+					if !c.Acc[account].HasUidmove && olduid!=0 && uid!=0 {
+							olduids:=strconv.Itoa(int(olduid))
+							imc.WriteLine("x uid store "+olduids+" flags \\Deleted")
+							imc.ReadLine("x OK")
+							imc.WriteLine("x expunge")
+							imc.ReadLine("x OK")
+							fmt.Println("killed old")
+					}
 					ies:=c.ReadIndexEntries()
 					for i,ie:=range ies {
 						if ie.A==account && ie.M==localmbname && ie.U==uint32(olduid) {
@@ -395,8 +417,9 @@ func (imc *IMAPConn) MoveInMailbox(c Config,account string,localmbname string) e
 							break
 						}
 					}
+
 					newuids:=strconv.Itoa(int(uid))
-					err:=os.Rename(c.Path+"/"+account+"/"+localmbname+"/"+finf.Name(),c.Path+"/"+account+"/"+string(dest)+"/"+newuids)
+					err:=os.Rename(c.Path+separ+account+separ+localmbname+separ+finf.Name(),c.Path+separ+account+separ+string(dest)+separ+newuids)
 					if err!=nil {
 						fmt.Println("error during local rename : ",err)
 						fmt.Println("local index not updated")
@@ -404,22 +427,22 @@ func (imc *IMAPConn) MoveInMailbox(c Config,account string,localmbname string) e
 						c.WriteIndexEntries(ies)
 					}
 				}
-				os.Remove(path+"/"+finf.Name())
+				os.Remove(path+separ+finf.Name())
 		}
 	}
 	return nil
 }
 
 func SyncerMain() {
+	separ:=string(filepath.Separator)
 	conf:=ReadConfig()
-
 	for acc:=range conf.Acc {
 		imapconn,_:=Login(conf.Acc[acc])
 		for mbox:=range conf.Acc[acc].Mailboxes {
 			imapconn.FetchNewInMailbox(conf,acc,mbox,0)
 		}
 		for mbox:=range conf.Acc[acc].Mailboxes {
-			imapconn.AppendFilesInDir(conf,acc,mbox,conf.Path+"/"+acc+"/"+mbox+"/appends",false,false)
+			imapconn.AppendFilesInDir(conf,acc,mbox,conf.Path+separ+acc+separ+mbox+separ+"appends",false,false)
 		}
 		for mbox:= range conf.Acc[acc].Mailboxes {
 			imapconn.MoveInMailbox(conf,acc,mbox)

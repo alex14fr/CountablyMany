@@ -74,7 +74,7 @@ function prevMsg() {
 function cmdAndNext(cmd, text) {
 	console.log('cmd out next '+curId+' nextid='+gnextId);	
 	hRows[curId].innerHTML+="<span>&rarr;"+text+"</span>";
-	window.fetch('/cmd?q=mid:'+encodeURIComponent(curId+' '+cmd)+'&onlyretag=1');
+	window.fetch('/cmd?q='+encodeURIComponent(curId+'##'+cmd));
 	nextMsg();
 }
 
@@ -121,36 +121,30 @@ document.addEventListener("keydown", function(e) {
 	}
 
 	else if(e.key=="K") {
-		cmdAndNext("//-inbox +killed -todo -wait -done -archive","Killed");
+		cmdAndNext("KILL","Killed");
 	}
 
 	else if(e.key=="I") {
-		cmdAndNext("//+inbox -archive -killed -todo -wait -done","Inboxed");
+		cmdAndNext("inbox","Inboxed");
 	}
 
 	else if(e.key=="a") {
-		cmdAndNext("//+archive -inbox -todo -wait -done","Archived");
+		cmdAndNext("archive","Archived");
 	}
 
 	else if(e.key=="t") {
-		cmdAndNext("//-inbox -archive +todo -wait -done","Todo");
+		cmdAndNext("todo","Todo");
 	}
 
 	else if(e.key=="w") {
-		cmdAndNext("//-inbox -archive +wait -todo -done","Wait");
+		cmdAndNext("wait","Wait");
 	}
 
 	else if(e.key=="d") {
-		cmdAndNext("//-inbox -archive +done -todo -wait","Done");
+		cmdAndNext("done","Done");
 	}
 
-	else if(e.key=="/") {
-		commandMode=false;
-		updCmdModeIndicator();
-		var o=document.getElementById('query')
-		o.value+='//mid:'+curId+'//';
-		o.focus();
-	}
+
 
 	else if(e.key=="q") {
 		loadmsglist(document.getElementById("query").value);
