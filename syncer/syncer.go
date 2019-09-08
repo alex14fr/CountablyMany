@@ -433,6 +433,21 @@ func (imc *IMAPConn) MoveInMailbox(c Config,account string,localmbname string) e
 	return nil
 }
 
+func SyncerMkdirs() {
+	separ:=string(filepath.Separator)
+	c:=ReadConfig()
+	p:=c.Path
+	os.Mkdir(p,0600)
+	for acc:=range c.Acc {
+		os.Mkdir(p+separ+acc,0600)
+		for mbox:=range c.Acc[acc].Mailboxes {
+			os.Mkdir(p+separ+acc+separ+mbox,0600)
+			os.Mkdir(p+separ+acc+separ+mbox+separ+"moves",0600)
+			os.Mkdir(p+separ+acc+separ+mbox+separ+"appends",0600)
+		}
+	}
+}
+
 func SyncerMain() {
 	separ:=string(filepath.Separator)
 	conf:=ReadConfig()
@@ -448,5 +463,16 @@ func SyncerMain() {
 			imapconn.MoveInMailbox(conf,acc,mbox)
 		}
 	}
-
 }
+
+func SyncerLoop() {
+	SyncerMkdirs()
+	for true {
+		fmt.Print("SyncerLoop starting at ",time.Now().Format(time.ANSIC))
+		SyncerMain()
+		fmt.Print("SyncerLoop stopping at ",time.Now().Format(time.ANSIC))
+		time.Sleep(5*time.Minute)
+	}
+}
+
+

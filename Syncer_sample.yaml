@@ -1,0 +1,26 @@
+path: "/home/al/Mail2"
+acc:
+   gmail:
+      server: imap.gmail.com:imaps
+      user: user
+      pass: sesame
+      hasuidmove: true
+      mailboxes: 
+         inbox: "INBOX"
+         sent: "XSent"
+         archive: "XArchive"
+         todo: "XTodo"
+         done: "XDone"
+         wait: "XWait"
+   work:
+      server: imap.server2.com:imaps
+      user: user.corporate
+      pass: sesame2
+      hasuidmove: false
+      mailboxes:
+         inbox: "INBOX"
+         sent: "Sent"
+         archive: "Archive"
+         todo: "Todo"
+         done: "Done"
+         wait: "Wait"

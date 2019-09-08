@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"io/ioutil"
 	"path/filepath"
+	"strconv"
 	"fmt"
 	"github.com/jhillyerd/enmime"
 	"github.com/spf13/viper"
@@ -114,7 +115,8 @@ func ETagF(fnam string) string {
 	lst, err := os.Lstat(fnam)
 	if err!=nil {
 		fmt.Println("ETagF: failed Lstat ",err)
-		return "0"
+		s:=strconv.Itoa(int(rand.Uint64()))
+		return s
 	}
 	mtime := lst.ModTime().Unix()
 	return fmt.Sprintf("%x%x", ResetCacheMTime, mtime)
@@ -277,8 +279,6 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 	composeText = strings.Replace(composeText,identity+"\n",headerTop,1)
 	composeText=strings.ReplaceAll(composeText,"\n","\r\n")
 
-	fmt.Println(composeText)
-
 	var toaddrlist,ccaddrlist string
 	fmt.Sscanf(strings.Split(composeText,"To: ")[1],"%s\r\n",&toaddrlist)
 	fmt.Sscanf(strings.Split(composeText,"Cc: ")[1],"%s\r\n",&ccaddrlist)
@@ -345,9 +345,7 @@ func main() {
 	SyncerConfig=syncer.ReadConfig()
 
 	SyncerIes=SyncerConfig.ReadIndexEntries()
-	if cmd := viper.GetString("StartupCommand"); cmd != "" {
-		go exec.Command(cmd).Run()
-	}
+	go syncer.SyncerLoop()
 	http.HandleFunc("/", HdlRes)
 	http.HandleFunc("/cmd", HdlCmd)
 	http.HandleFunc("/read", HdlRead)
