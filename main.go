@@ -299,7 +299,12 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 	} else {
 		fmt.Fprint(r,"send ok")
 	}
-	ioutil.WriteFile(outId["outfolder"].(string)+boundary,[]byte(composeText),0600)
+	er=ioutil.WriteFile(outId["outfolder"].(string)+separ+boundary,[]byte(composeText),0600)
+	if(er!=nil) {
+		fmt.Fprint(r," - copy failed: ",er)
+	} else {
+		fmt.Fprint(r," - copy ok")
+	}
 }
 
 func HdlReply(r http.ResponseWriter, q *http.Request) {

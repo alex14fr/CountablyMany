@@ -46,7 +46,7 @@ func (imc *IMAPConn) ReadLine(waitUntil string) (s string, err error) {
 		s,err=imc.RW.ReadString('\n')
 		if err!=nil {
 			fmt.Println("imap read error : ",err)
-			return
+			return 
 		}
 		fmt.Print(s)
 		if(waitUntil=="" || strings.Index(s, waitUntil)==0) {
@@ -311,7 +311,39 @@ func (imc *IMAPConn) FetchNewInMailbox(c Config, account string, localmbname str
 	fmt.Println("New is from uid ",fromUid)
 	randomtag:="x"+strconv.Itoa(int(rand.Uint64()))
 	imc.WriteLine("x examine "+c.Acc[account].Mailboxes[localmbname])
+	sss,_:=imc.ReadLine("* OK [UIDVALIDITY")
+	var uidvalidity uint32
+	fmt.Sscanf(sss,"* OK [UIDVALIDITY %d]",&uidvalidity)
+	uidvaliditys:=strconv.Itoa(int(uidvalidity))
+	storeduidval,_:=ioutil.ReadFile(c.Path+separ+account+separ+localmbname+separ+"UIDValidity.txt")
+	if string(storeduidval)=="" {
+		fmt.Println("writing new UIDValidity.txt")
+		ioutil.WriteFile(c.Path+separ+account+separ+localmbname+separ+"UIDValidity.txt", []byte(uidvaliditys), 0600)
+	} else if(string(storeduidval)!=uidvaliditys) {
+		fmt.Println("Ooops ! storeduidval and uidvalidity mismatch, better do nothing storeduidval=",storeduidval,"uidval=",uidvaliditys)
+		return errors.New("storeduidval and uidvalidity mismatch")
+	} else {
+		fmt.Println("UIDValidity ok")
+	}
+
 	imc.ReadLine("x ")
+	imc.WriteLine(randomtag+" uid fetch "+strconv.Itoa(int(fromUid))+":* rfc822.size")
+	ss,_:=imc.ReadLine("")
+	if strings.Index(ss,randomtag)==0 {
+		fmt.Println("no new message")
+		return nil
+	}
+	var uid uint32
+	var leng int
+	var d int
+	imc.ReadLine(randomtag)
+	fmt.Sscanf(ss,"* %d FETCH (UID %d RFC822.SIZE {%d",&d,&uid,&leng)
+	fmt.Println("got uid:",uid," length:",leng)
+	if uid<fromUid {
+		fmt.Println("uid<fromUid, no new message")
+		return nil
+	}
+
 	imc.WriteLine(randomtag+" uid fetch "+strconv.Itoa(int(fromUid))+":* rfc822")
 	end:=false
 	for !end {
@@ -319,9 +351,6 @@ func (imc *IMAPConn) FetchNewInMailbox(c Config, account string, localmbname str
 		if(strings.Index(s,randomtag)==0) {
 			end=true
 		} else {
-			var uid uint32
-			var leng int
-			var d int
 			fmt.Sscanf(s,"* %d FETCH (UID %d RFC822 {%d",&d,&uid,&leng)
 			fmt.Println("got uid:",uid," length:",leng)
 			content:=make([]byte,leng)
@@ -454,7 +483,10 @@ func SyncerMain() {
 	for acc:=range conf.Acc {
 		imapconn,_:=Login(conf.Acc[acc])
 		for mbox:=range conf.Acc[acc].Mailboxes {
-			imapconn.FetchNewInMailbox(conf,acc,mbox,0)
+			if(imapconn.FetchNewInMailbox(conf,acc,mbox,0)!=nil) {
+				fmt.Println("FetchNewInMailbox returning error, stopping right now")
+				return
+			}
 		}
 		for mbox:=range conf.Acc[acc].Mailboxes {
 			imapconn.AppendFilesInDir(conf,acc,mbox,conf.Path+separ+acc+separ+mbox+separ+"appends",false,false)
@@ -468,9 +500,9 @@ func SyncerMain() {
 func SyncerLoop() {
 	SyncerMkdirs()
 	for true {
-		fmt.Print("SyncerLoop starting at ",time.Now().Format(time.ANSIC))
+		fmt.Println("SyncerLoop starting at ",time.Now().Format(time.ANSIC))
 		SyncerMain()
-		fmt.Print("SyncerLoop stopping at ",time.Now().Format(time.ANSIC))
+		fmt.Println("SyncerLoop stopping at ",time.Now().Format(time.ANSIC))
 		time.Sleep(5*time.Minute)
 	}
 }
