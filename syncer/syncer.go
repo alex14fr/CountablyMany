@@ -1,4 +1,4 @@
-package main
+package syncer
 
 import ( "fmt"
 			"crypto/tls"
@@ -207,7 +207,7 @@ func (imc *IMAPConn) AppendFilesInDir(c Config, account string, localmbname stri
 	}
 }
 
-func main() {
+func SyncerMain() {
 	conf:=ReadConfig()
 	imapconn,_:=Login(conf.Acc["gmail"])
 

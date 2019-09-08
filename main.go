@@ -5,8 +5,8 @@ import (
 	"io/ioutil"
 	"fmt"
 	"github.com/jhillyerd/enmime"
-	"github.com/laochailan/notmuch-go"
 	"github.com/spf13/viper"
+	"perso.tld/CountablyMany/syncer"
 	"hash/crc64"
 	"html"
 	"math/rand"
@@ -21,16 +21,7 @@ import (
 	"encoding/base64"
 )
 
-var Nmdb *notmuch.Database
 var ResetCacheMTime int64
-
-func OpenNmdb() {
-	Nmdb, _ = notmuch.OpenDatabase(viper.GetString("NotmuchDB"), notmuch.DATABASE_MODE_READ_WRITE)
-}
-
-func CloseNmdb() {
-	Nmdb.Close()
-}
 
 func HookAuth(r http.ResponseWriter, q *http.Request) bool {
 	lhash := viper.GetString("LoginHash")
@@ -65,66 +56,20 @@ func HdlCmd(r http.ResponseWriter, q *http.Request) {
 
 	limit := viper.GetInt("MaxMessages")
 	query := q.FormValue("q")
-	querys := strings.Split(query, "//")
-	AddTags := []string{}
-	RemoveTags := []string{}
-	OpenNmdb()
-	defer CloseNmdb()
-	var tagmod, subject, back string
-	if len(querys) > 1 {
-		if len(querys) > 2 {
-			tagmod = querys[2]
-			subject = querys[1]
-			back = querys[0]
-		} else {
-			tagmod = querys[1]
-			subject = querys[0]
-			back = querys[0]
-		}
-		fmt.Println("tagmod=" + tagmod + " subject=" + subject + " back=" + back)
-		tagmods := strings.Split(tagmod, " ")
-		for _, tag := range tagmods {
-			if tag[0] == '+' {
-				AddTags = append(AddTags, tag[1:])
-			} else {
-				RemoveTags = append(RemoveTags, tag[1:])
-			}
-		}
-		nmqq := Nmdb.CreateQuery(subject)
-		if nmqq == nil {
-			fmt.Fprintf(r, "can't create query "+subject)
-			return
-		}
-		msgss := nmqq.SearchMessages()
-		if msgss == nil {
-			fmt.Fprintf(r, "Can't search messages query "+subject)
-			return
-		}
-		for ; msgss.Valid(); msgss.MoveToNext() {
-			msgg := msgss.Get()
-			for _, tag := range AddTags {
-				msgg.AddTag(tag)
-			}
-			for _, tag := range RemoveTags {
-				msgg.RemoveTag(tag)
-			}
-		}
-		if q.FormValue("onlyretag") != "1" {
-			//http.Redirect(r,q,"/?q="+back,302)
-		} else {
-			fmt.Fprintf(r, "ok")
-			return
-		}
-		query = back
+	querys := strings.Split(query, "##")
+	var movedest, subject, back string
+	if len(querys) > 2 {
+		movedest = querys[2]
+		subject = querys[1]
+		back = querys[0]
+		fmt.Println("MOVE querys not handled yet")
 	}
-	if query == "" {
-		query = "tag:inbox"
-	}
-	nmq := Nmdb.CreateQuery(query)
-	if nmq == nil {
-		fmt.Fprint(r, "Can't create query "+query)
+	if q.FormValue("onlymove") == "1" {
+		fmt.Fprintf(r, "ok")
 		return
 	}
+
+
 	dateND := time.Now().Format("02/01/2006")
 	i := 0
 	msgs := nmq.SearchMessages()
@@ -407,12 +352,11 @@ func main() {
 	viper.SetDefault("LoginHash", "Y2hhbmdlOnRoaXM=") //change:this
 	viper.SetDefault("NotmuchDB", "/home/al/Mail/")
 	viper.SetDefault("MaxMessages", 30000)
-	viper.SetDefault("StartupCommand", "/usr/bin/offlineimap")
-	viper.SetDefault("ReloadCommand", "pkill -USR1 offlineimap")
+	viper.SetDefault("StartupCommand", "")
+	viper.SetDefault("ReloadCommand", "")
 
 	viper.SetConfigName("CountablyMany")
 	viper.AddConfigPath(".")
-	viper.AddConfigPath(".config")
 	viper.ReadInConfig()
 
 	OutIdentities = viper.GetStringMap("OutIdentities")
