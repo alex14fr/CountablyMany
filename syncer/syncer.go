@@ -3,11 +3,16 @@ package syncer
 import ( "fmt"
 			"crypto/tls"
 			"io/ioutil"
+			"io"
 			"bufio"
 			"strconv"
 			"strings"
 			"os"
 			"errors"
+			"html"
+			"time"
+			"sort"
+			"math/rand"
 			"gopkg.in/yaml.v2"
 			"github.com/jhillyerd/enmime"
 			)
@@ -42,6 +47,27 @@ func (imc *IMAPConn) ReadLine(waitUntil string) (s string, err error) {
 		fmt.Print(s)
 		if(waitUntil=="" || strings.Index(s, waitUntil)==0) {
 			ok=true
+		}
+	}
+	return
+}
+func (imc *IMAPConn) ReadLineDelim(waitUntil string) (sPre,sPost string, err error) {
+	s:=""
+	sPre=""
+	sPost=""
+	for true {
+		fmt.Print("S: ")
+		s,err=imc.RW.ReadString('\n')
+		if err!=nil {
+			fmt.Println("imap read error : ",err)
+			return
+		}
+		fmt.Print(s)
+		if(strings.Index(s, waitUntil)==0) {
+			sPost=s
+			return
+		} else {
+			sPre=sPre+s
 		}
 	}
 	return
@@ -159,6 +185,54 @@ func (ies IndexEntries) HasMessageID(mid string, account string, mbox string) bo
 	}
 	return false
 }
+func (ies IndexEntries) searchMessageID(mid string, account string) *IndexEntry {
+	for i,ie:=range ies {
+		if ie.A==account && ie.I == mid {
+			return  &(ies[i])
+		}
+	}
+	return nil
+}
+
+
+type htmlLine struct {
+	rTime int64
+	rHtml string
+}
+
+func (ies IndexEntries) ListMessagesHTML(path string) string {
+	a:=strings.Split(path,"/")
+	if len(a)<2  {
+		return "invalid path"
+	}
+	account:=a[0]
+	locmb:=a[1]
+	dateND:=time.Now().Format("02/01/2006")
+	lines:=[]htmlLine{}
+	for _,ie:=range ies {
+		if ie.A==account && ie.M==locmb {
+			parsed,err:=time.Parse("Mon, _2 Jan 2006 15:04:05 -0700",ie.D)
+			if err!=nil {
+				parsed,_=time.Parse("Mon, _2 Jan 2006 15:04:05 -0700 (MST)",ie.D)
+			}
+			dateLbl:=parsed.Format("02/01/2006")
+			dateH:=parsed.Format("15:04")
+			if dateLbl==dateND {
+				dateLbl=dateH
+			}
+			from:=ie.F
+			from=strings.Split(strings.ReplaceAll(from,"\"",""),"<")[0]
+			lines=append(lines, htmlLine{rHtml: fmt.Sprintf("<div class=msglistRow data-mid='%s'><span>%s</span><span>%s</span><span>%s</span></div>",path+"/"+strconv.Itoa(int(ie.U)),dateLbl,from,html.EscapeString(ie.S)), rTime: parsed.Unix()})
+		}
+	}
+	s:=""
+	sort.Slice(lines, func(i int, j int)bool { return lines[i].rTime>lines[j].rTime })
+	for _,l:=range lines {
+		s=s+l.rHtml
+	}
+	return s
+
+}
 
 func getMidFromFile(filename string) string {
 	fil,_:=os.Open(filename)
@@ -166,7 +240,7 @@ func getMidFromFile(filename string) string {
 	return env.GetHeader("Message-ID")
 }
 
-func (imc *IMAPConn) AppendFile(c Config, accountname string, localmbname string, filename string, allowDup bool) error {
+func (imc *IMAPConn) AppendFile(c Config, accountname string, localmbname string, filename string, allowDup bool, keepOrig bool) error {
 	if(!allowDup) {
 		ies:=c.ReadIndexEntries()
 		mid:=getMidFromFile(filename)
@@ -192,25 +266,164 @@ func (imc *IMAPConn) AppendFile(c Config, accountname string, localmbname string
 			fmt.Println("AppendFile: link error",err)
 			return err
 		}
+		if !keepOrig {
+			fmt.Println("deleting ",filename)
+			os.Remove(filename)
+		} else {
+			fmt.Println("keeping ",filename)
+		}
 		return nil
 	}
 	return errors.New("appendFile: no uid returned")
 }
 
-func (imc *IMAPConn) AppendFilesInDir(c Config, account string, localmbname string, directory string, allowDup bool) {
+func (imc *IMAPConn) AppendFilesInDir(c Config, account string, localmbname string, directory string, allowDup bool, keepOrig bool) {
 	finfs,_:=ioutil.ReadDir(directory)
 	for _,finf:=range finfs {
 		if !finf.IsDir() {
 			fmt.Println("AppendFilesInDir: appending "+finf.Name()+" in "+account+"/"+localmbname+"...")
-			imc.AppendFile(c,account,localmbname,directory+"/"+finf.Name(),allowDup)
+			imc.AppendFile(c,account,localmbname,directory+"/"+finf.Name(),allowDup,keepOrig)
 		}
 	}
 }
 
+func (ies IndexEntries) GetHighestUID(account string, localmbname string) uint32 {
+	huid:=uint32(0)
+	for _,k := range(ies) {
+		if k.A==account && k.M==localmbname && k.U>huid {
+			huid=k.U
+		}
+	}
+	return huid
+}
+
+func (imc *IMAPConn) FetchNewInMailbox(c Config, account string, localmbname string, fromUid uint32) error {
+	fmt.Println("Fetch new in mailbox ",account,"/",localmbname,"...")
+	ies:=c.ReadIndexEntries()
+	if fromUid==0 {
+		fromUid=ies.GetHighestUID(account, localmbname)+1
+	}
+	fmt.Println("New is from uid ",fromUid)
+	randomtag:="x"+strconv.Itoa(int(rand.Uint64()))
+	imc.WriteLine("x examine "+c.Acc[account].Mailboxes[localmbname])
+	imc.ReadLine("x ")
+	imc.WriteLine(randomtag+" uid fetch "+strconv.Itoa(int(fromUid))+":* rfc822")
+	end:=false
+	for !end {
+		s,_:=imc.ReadLine("")
+		if(strings.Index(s,randomtag)==0) {
+			end=true
+		} else {
+			var uid uint32
+			var leng int
+			var d int
+			fmt.Sscanf(s,"* %d FETCH (UID %d RFC822 {%d",&d,&uid,&leng)
+			fmt.Println("got uid:",uid," length:",leng)
+			content:=make([]byte,leng)
+			_,err:=io.ReadAtLeast(imc.RW, content, leng)
+			if err!=nil {
+				fmt.Println("error ReadAtLeast, can't continue : ",err)
+				return err
+			}
+			if uid<fromUid {
+				fmt.Println("got uid lower than fromUid, skipping")
+			} else {
+				fmt.Println("writing to file...")
+				err=ioutil.WriteFile(c.Path+"/"+account+"/"+localmbname+"/"+strconv.Itoa(int(uid)),content,0600)
+				if err!=nil {
+					fmt.Println("error WriteFile, can't continue : ",err)
+					return err
+				}
+				fmt.Println("inserting into index...")
+				ie:=MakeIEFromFile(c.Path+"/"+account+"/"+localmbname+"/"+strconv.Itoa(int(uid)))
+				ie.U=uid
+				ie.A=account
+				ie.M=localmbname
+				ies=c.ReadIndexEntries()
+				checkAlready:=ies.searchMessageID(ie.I, account)
+				if checkAlready!=nil {
+					fmt.Println("was already in index, for mbox=",checkAlready.M," (foreign move ?)")
+					fmt.Println("keeping both")
+				} 
+				ies=append(ies,ie)
+				c.WriteIndexEntries(ies)
+			}
+			imc.ReadLine("")
+		}
+	}
+
+	return nil
+}
+
+func (imc *IMAPConn) MoveInMailbox(c Config,account string,localmbname string) error {
+	path:=c.Path+"/"+account+"/"+localmbname+"/moves"
+	fmt.Println("performing moves in ",path,"...")
+	imc.WriteLine("x select "+c.Acc[account].Mailboxes[localmbname])
+	imc.ReadLine("x ")
+	finfs,_:=ioutil.ReadDir(path)
+	for _,finf:=range finfs {
+		if !finf.IsDir() {
+				dest,_:=ioutil.ReadFile(path+"/"+finf.Name())
+				fmt.Println("moving ",finf.Name()," to ",string(dest))
+				if strings.Index(string(dest),"KILL")==0 {
+					imc.WriteLine("x uid store "+finf.Name()+" flags \\Deleted")
+					imc.ReadLine("x ")
+					imc.WriteLine("x expunge")
+					imc.ReadLine("x ")
+					os.Remove(path+"/"+account+"/"+localmbname+"/"+finf.Name())
+					ies:=c.ReadIndexEntries()
+					for i,ie:=range ies {
+						uid2kill,_:=strconv.Atoi(finf.Name())
+						if ie.A==account && ie.M==localmbname && ie.U==uint32(uid2kill) {
+							ies[i]=ies[len(ies)-1]
+							ies=ies[0:len(ies)-1]
+							break
+						}
+					}
+					c.WriteIndexEntries(ies)
+				} else {
+					imc.WriteLine("x uid move "+finf.Name()+" "+c.Acc[account].Mailboxes[string(dest)])
+					var d,olduid,uid uint32
+					s,_:=imc.ReadLine("x OK")
+					fmt.Sscanf(s,"x OK [COPYUID %d %d %d",&d,&olduid,&uid)
+					fmt.Println("uid in orig folder is ",olduid, " uid in dest folder is ",uid)
+					ies:=c.ReadIndexEntries()
+					for i,ie:=range ies {
+						if ie.A==account && ie.M==localmbname && ie.U==uint32(olduid) {
+							ies[i].M=string(dest)
+							ies[i].U=uid
+							break
+						}
+					}
+					newuids:=strconv.Itoa(int(uid))
+					err:=os.Rename(c.Path+"/"+account+"/"+localmbname+"/"+finf.Name(),c.Path+"/"+account+"/"+string(dest)+"/"+newuids)
+					if err!=nil {
+						fmt.Println("error during local rename : ",err)
+						fmt.Println("local index not updated")
+					} else {
+						c.WriteIndexEntries(ies)
+					}
+				}
+				os.Remove(path+"/"+finf.Name())
+		}
+	}
+	return nil
+}
+
 func SyncerMain() {
 	conf:=ReadConfig()
-	imapconn,_:=Login(conf.Acc["gmail"])
 
-	imapconn.AppendFilesInDir(conf,"gmail","sent","/home/al/Mail/free/Sent/cur",false)
+	for acc:=range conf.Acc {
+		imapconn,_:=Login(conf.Acc[acc])
+		for mbox:=range conf.Acc[acc].Mailboxes {
+			imapconn.FetchNewInMailbox(conf,acc,mbox,0)
+		}
+		for mbox:=range conf.Acc[acc].Mailboxes {
+			imapconn.AppendFilesInDir(conf,acc,mbox,conf.Path+"/"+acc+"/"+mbox+"/appends",false,false)
+		}
+		for mbox:= range conf.Acc[acc].Mailboxes {
+			imapconn.MoveInMailbox(conf,acc,mbox)
+		}
+	}
 
 }

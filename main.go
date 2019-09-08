@@ -49,19 +49,22 @@ func HdlRes(r http.ResponseWriter, q *http.Request) {
 	}
 }
 
+var SyncerConfig syncer.Config
+var SyncerIes syncer.IndexEntries
+
 func HdlCmd(r http.ResponseWriter, q *http.Request) {
 	if !HookAuth(r, q) {
 		return
 	}
-
-	limit := viper.GetInt("MaxMessages")
 	query := q.FormValue("q")
+
+	SyncerIes=SyncerConfig.ReadIndexEntries()
 	querys := strings.Split(query, "##")
-	var movedest, subject, back string
+	//var movedest, subject, back string
 	if len(querys) > 2 {
-		movedest = querys[2]
+	/*	movedest = querys[2]
 		subject = querys[1]
-		back = querys[0]
+		back = querys[0] */
 		fmt.Println("MOVE querys not handled yet")
 	}
 	if q.FormValue("onlymove") == "1" {
@@ -69,48 +72,18 @@ func HdlCmd(r http.ResponseWriter, q *http.Request) {
 		return
 	}
 
+	outstr := SyncerIes.ListMessagesHTML(query)
 
-	dateND := time.Now().Format("02/01/2006")
-	i := 0
-	msgs := nmq.SearchMessages()
-	if msgs == nil {
-		fmt.Fprintf(r, "Can't search messages, query "+query)
-		return
-	}
-	outstr := ""
-	for ; msgs.Valid() && i < limit; msgs.MoveToNext() {
-		i++
-		msg := msgs.Get()
-		dateU, _ := msg.GetDate()
-		datelbl := time.Unix(dateU, 0).Format("02/01/2006")
-		dateH := time.Unix(dateU, 0).Format("15:04")
-		if datelbl == dateND {
-			datelbl = dateH
-		}
-		from := msg.GetHeader("From")
-		fromfmt := strings.Split(strings.ReplaceAll(from, "\"", ""), "<")[0]
-		outstr = outstr + fmt.Sprintf("<div class=msglistRow data-mid='%s'><span>%s</span><span>%s</span><span>%s</span><span>", msg.GetMessageId(), datelbl, fromfmt, html.EscapeString(msg.GetHeader("Subject")))
-		for tags := msg.GetTags(); tags.Valid(); tags.MoveToNext() {
-			outstr = outstr + tags.Get() + " "
-		}
-		outstr = outstr + "</span></div>"
-	}
-	outstr = outstr + "</div>"
 	if HandleETag(r, q, ETagS(outstr)) {
 		return
 	}
+
 	fmt.Fprintf(r, outstr)
 }
 
 func GetMessageFile(r http.ResponseWriter, q *http.Request) (*os.File, string) {
-	id := q.FormValue("id")
-	msg, err := Nmdb.FindMessage(id)
-	if err != notmuch.STATUS_SUCCESS {
-		fmt.Fprint(r, "Message ID "+id+" not found")
-		return nil, ""
-	}
-	msg.RemoveTag("unread")
-	fname := msg.GetFileName()
+	id := strings.ReplaceAll(q.FormValue("id"),"../","")
+	fname:=SyncerConfig.Path+"/"+id
 	file, err2 := os.Open(fname)
 	if err2 != nil {
 		fmt.Fprint(r, "Can't open "+fname)
@@ -124,9 +97,8 @@ func HdlSource(r http.ResponseWriter, q *http.Request) {
 		return
 	}
 
+	SyncerIes=SyncerConfig.ReadIndexEntries()
 	r.Header().Set("Content-type", "text/plain")
-	OpenNmdb()
-	defer CloseNmdb()
 	_, fname := GetMessageFile(r, q)
 	http.ServeFile(r, q, fname)
 }
@@ -167,8 +139,7 @@ func HdlRead(r http.ResponseWriter, q *http.Request) {
 		return
 	}
 
-	OpenNmdb()
-	defer CloseNmdb()
+	SyncerIes=SyncerConfig.ReadIndexEntries()
 	id := q.FormValue("id")
 	file, fname := GetMessageFile(r, q)
 	if HandleETag(r, q, ETagF(fname)) {
@@ -200,6 +171,38 @@ func HdlRead(r http.ResponseWriter, q *http.Request) {
 	}
 	fmt.Fprint(r, htmlmail+"</div>")
 
+}
+
+func HdlAttachGet(r http.ResponseWriter, q *http.Request) {
+	if !HookAuth(r, q) {
+		return
+	}
+
+	SyncerIes=SyncerConfig.ReadIndexEntries()
+	cid := q.FormValue("cid")
+	mode := q.FormValue("mode")
+	file, fname := GetMessageFile(r, q)
+	if HandleETag(r, q, ETagF(fname)) {
+		return
+	}
+	mail, err2 := enmime.ReadEnvelope(bufio.NewReader(file))
+	if err2 != nil {
+		fmt.Fprint(r, "Can't parse mail")
+		return
+	}
+	for _, att := range append(mail.Attachments, mail.Inlines...) {
+		if att.FileName == cid {
+			r.Header().Set("Content-type", att.ContentType)
+			if mode == "attach" {
+				r.Header().Set("Content-disposition", "attachment;filename=\""+att.FileName+"\"")
+			} else {
+				r.Header().Set("Content-disposition", "inline")
+			}
+			fmt.Fprintf(r, "%s", att.Content)
+			return
+		}
+	}
+	fmt.Fprint(r, "CID not found in mail")
 }
 
 func HdlCompose(r http.ResponseWriter, q *http.Request) {
@@ -301,38 +304,6 @@ func HdlReply(r http.ResponseWriter, q *http.Request) {
 
 }
 
-func HdlAttachGet(r http.ResponseWriter, q *http.Request) {
-	if !HookAuth(r, q) {
-		return
-	}
-
-	OpenNmdb()
-	defer CloseNmdb()
-	cid := q.FormValue("cid")
-	mode := q.FormValue("mode")
-	file, fname := GetMessageFile(r, q)
-	if HandleETag(r, q, ETagF(fname)) {
-		return
-	}
-	mail, err2 := enmime.ReadEnvelope(bufio.NewReader(file))
-	if err2 != nil {
-		fmt.Fprint(r, "Can't parse mail")
-		return
-	}
-	for _, att := range append(mail.Attachments, mail.Inlines...) {
-		if att.FileName == cid {
-			r.Header().Set("Content-type", att.ContentType)
-			if mode == "attach" {
-				r.Header().Set("Content-disposition", "attachment;filename=\""+att.FileName+"\"")
-			} else {
-				r.Header().Set("Content-disposition", "inline")
-			}
-			fmt.Fprintf(r, "%s", att.Content)
-			return
-		}
-	}
-	fmt.Fprint(r, "CID not found in mail")
-}
 
 func HdlResync(r http.ResponseWriter, q *http.Request) {
 	if !HookAuth(r, q) {
@@ -346,11 +317,15 @@ func HdlResync(r http.ResponseWriter, q *http.Request) {
 var OutIdentities map[string]interface{}
 
 func main() {
+	if os.Getenv("SYNCER")=="1"  {
+		syncer.SyncerMain()
+		return
+	}
+
 	viper.SetDefault("ListenAddr", ":1336")
 	viper.SetDefault("TLSCert", "cert.pem")
 	viper.SetDefault("TLSKey", "key.pem")
 	viper.SetDefault("LoginHash", "Y2hhbmdlOnRoaXM=") //change:this
-	viper.SetDefault("NotmuchDB", "/home/al/Mail/")
 	viper.SetDefault("MaxMessages", 30000)
 	viper.SetDefault("StartupCommand", "")
 	viper.SetDefault("ReloadCommand", "")
@@ -361,6 +336,9 @@ func main() {
 
 	OutIdentities = viper.GetStringMap("OutIdentities")
 
+	SyncerConfig=syncer.ReadConfig()
+
+	SyncerIes=SyncerConfig.ReadIndexEntries()
 	if cmd := viper.GetString("StartupCommand"); cmd != "" {
 		go exec.Command(cmd).Run()
 	}
