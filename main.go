@@ -17,7 +17,6 @@ import (
 	"net/smtp"
 	"net/url"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
 	"encoding/base64"
@@ -320,11 +319,13 @@ func HdlResync(r http.ResponseWriter, q *http.Request) {
 		return
 	}
 
-	exec.Command(viper.GetString("ReloadCommand")).Run()
+	<- ChanSyncerLoop
+	ChanSyncerLoop <- 1
 	fmt.Fprint(r, "ok")
 }
 
 var OutIdentities map[string]interface{}
+var ChanSyncerLoop chan int
 
 func main() {
 	separ=string(filepath.Separator)
@@ -350,7 +351,8 @@ func main() {
 	SyncerConfig=syncer.ReadConfig()
 
 	SyncerIes=SyncerConfig.ReadIndexEntries()
-	go syncer.SyncerLoop()
+	ChanSyncerLoop=make(chan int)
+	go syncer.SyncerLoop(ChanSyncerLoop)
 	http.HandleFunc("/", HdlRes)
 	http.HandleFunc("/cmd", HdlCmd)
 	http.HandleFunc("/read", HdlRead)

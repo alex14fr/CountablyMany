@@ -79,7 +79,11 @@ func (imc *IMAPConn) ReadLineDelim(waitUntil string) (sPre,sPost string, err err
 
 
 func (imc *IMAPConn) WriteLine(s string) (err error) {
-	fmt.Print("C: "+s+"\r\n")
+	if strings.Index(s,"x login ")==0 {
+		fmt.Print("C: [LOGIN command]\r\n")
+	} else {
+		fmt.Print("C: "+s+"\r\n")
+	}
 	_,err=imc.RW.WriteString(s+"\r\n")
 	if err!=nil {
 		fmt.Println("imap write error : ",err)
@@ -272,8 +276,12 @@ func (imc *IMAPConn) AppendFile(c Config, accountname string, localmbname string
 			return err
 		}
 		if !keepOrig {
-			fmt.Println("deleting ",filename)
-			os.Remove(filename)
+			filenameCopy:=strings.ReplaceAll(filename,"appends","appended")
+			fmt.Println("moving ",filename," to ",filenameCopy)
+			err=os.Rename(filename, filenameCopy)
+			if err!=nil {
+				fmt.Println("error renaming: ",err)
+			}
 		} else {
 			fmt.Println("keeping ",filename)
 		}
@@ -466,13 +474,14 @@ func SyncerMkdirs() {
 	separ:=string(filepath.Separator)
 	c:=ReadConfig()
 	p:=c.Path
-	os.Mkdir(p,0600)
+	os.Mkdir(p,0700)
 	for acc:=range c.Acc {
-		os.Mkdir(p+separ+acc,0600)
+		os.Mkdir(p+separ+acc,0700)
 		for mbox:=range c.Acc[acc].Mailboxes {
-			os.Mkdir(p+separ+acc+separ+mbox,0600)
-			os.Mkdir(p+separ+acc+separ+mbox+separ+"moves",0600)
-			os.Mkdir(p+separ+acc+separ+mbox+separ+"appends",0600)
+			os.Mkdir(p+separ+acc+separ+mbox,0700)
+			os.Mkdir(p+separ+acc+separ+mbox+separ+"moves",0700)
+			os.Mkdir(p+separ+acc+separ+mbox+separ+"appends",0700)
+			os.Mkdir(p+separ+acc+separ+mbox+separ+"appended",0700)
 		}
 	}
 }
@@ -497,13 +506,15 @@ func SyncerMain() {
 	}
 }
 
-func SyncerLoop() {
+func SyncerLoop(c chan int) {
 	SyncerMkdirs()
 	for true {
 		fmt.Println("SyncerLoop starting at ",time.Now().Format(time.ANSIC))
 		SyncerMain()
 		fmt.Println("SyncerLoop stopping at ",time.Now().Format(time.ANSIC))
-		time.Sleep(5*time.Minute)
+		c <- 1
+		//time.Sleep(5*time.Minute)
+		<- c
 	}
 }
 

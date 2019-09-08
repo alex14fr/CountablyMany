@@ -151,7 +151,7 @@ document.addEventListener("keydown", function(e) {
 	}
 
 	else if(e.key=="Q") {
-		fetch("/reload");
+		fetch("/resync");
 	}
 
 	else if(e.key=="Z") {
@@ -192,7 +192,7 @@ document.addEventListener("DOMContentLoaded", function(e) {
 		commandMode=true;
 		updCmdModeIndicator();
 	});
-	window.setInterval(function() { loadmsglist("");  }, 300000);
+//	window.setInterval(function() { loadmsglist("");  }, 300000);
 
 });
 
