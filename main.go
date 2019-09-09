@@ -186,6 +186,7 @@ func HdlReplytemplate(r http.ResponseWriter, q *http.Request) {
 
 	SyncerIes = SyncerConfig.ReadIndexEntries()
 	id := q.FormValue("id")
+	fwdMode:=(q.FormValue("mode")=="f")
 	file, fname := GetMessageFile(r, q)
 	_ = fname
 	/*	if HandleETag(r, q, ETagF(fname)) {
@@ -196,20 +197,26 @@ func HdlReplytemplate(r http.ResponseWriter, q *http.Request) {
 		fmt.Fprint(r, "Can't parse mail id "+id+" ", err2)
 		return
 	}
-	replyto := mail.GetHeader("From")
-	if mail.GetHeader("Reply-to") != "" {
-		replyto = mail.GetHeader("Reply-to")
-	}
-	subjectre := "Re: " + mail.GetHeader("Subject")
-	if strings.Index(mail.GetHeader("Subject"), "Re:") >= 0 || strings.Index(mail.GetHeader("Subject"), "re:") >= 0 {
-		subjectre = mail.GetHeader("Subject")
+	replyto:=""
+	subjectre:=""
+	if !fwdMode {
+		replyto = mail.GetHeader("From")
+		if mail.GetHeader("Reply-to") != "" {
+			replyto = mail.GetHeader("Reply-to")
+		}
+		if strings.Index(replyto, "<") >= 0 {
+			replyto = strings.Split(replyto, "<")[1]
+			replyto = replyto[:len(replyto)-1]
+		}
+		subjectre = "Re: " + mail.GetHeader("Subject")
+		if strings.Index(mail.GetHeader("Subject"), "Re:") >= 0 || strings.Index(mail.GetHeader("Subject"), "re:") >= 0 {
+			subjectre = mail.GetHeader("Subject")
+		}
+	} else {
+		subjectre = "Fwd: " + mail.GetHeader("Subject")
 	}
 	mailtxt := mail.Text
 	mailtxt = "> " + strings.ReplaceAll(mailtxt, "\n", "\n> ")
-	if strings.Index(replyto, "<") >= 0 {
-		replyto = strings.Split(replyto, "<")[1]
-		replyto = replyto[:len(replyto)-1]
-	}
 	replyidentity := "default"
 	for identity, _ := range OutIdentities {
 		outId := (OutIdentities[identity]).(map[string]interface{})
@@ -222,16 +229,20 @@ func HdlReplytemplate(r http.ResponseWriter, q *http.Request) {
 	fmt.Fprint(r, replyidentity+"\r\n"+
 		"To: "+replyto+"\r\n"+
 		"Cc: \r\n"+
-		"Subject: "+subjectre+"\r\n"+
-		"In-reply-to: "+mail.GetHeader("Message-ID")+"\r\n"+
-		"References: "+mail.GetHeader("Message-ID")+" "+mail.GetHeader("References")+"\r\n"+
+		"Subject: "+subjectre+"\r\n")
+	if !fwdMode {
+		fmt.Fprint(r,"In-reply-to: "+mail.GetHeader("Message-ID")+"\r\n")
+	}
+	fmt.Fprint(r,"References: "+mail.GetHeader("Message-ID")+" "+mail.GetHeader("References")+"\r\n"+
 		"@endheaders\r\n"+
 		"\r\n\r\n\r\n"+
 		"--- Original message ---\r\n"+
 		"From: "+mail.GetHeader("From")+"\r\n"+
 		"Subject: "+mail.GetHeader("Subject")+"\r\n"+
 		"Date: "+mail.GetHeader("Date")+"\r\n\r\n"+mailtxt)
-
+	if fwdMode {
+		fmt.Fprint(r,"\r\n@attachments "+id)
+	}
 }
 
 func HdlAttachGet(r http.ResponseWriter, q *http.Request) {

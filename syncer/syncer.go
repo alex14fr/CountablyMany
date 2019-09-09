@@ -440,7 +440,12 @@ func (imc *IMAPConn) MoveInMailbox(c Config, account string, localmbname string)
 				imc.ReadLine("x ")
 				imc.WriteLine("x expunge")
 				imc.ReadLine("x ")
-				os.Remove(path + separ + account + separ + localmbname + separ + finf.Name())
+				fname := c.Path + separ + account + separ + localmbname + separ + finf.Name()
+				fmt.Println("removing ",fname)
+				err := os.Remove(fname)
+				if err!=nil {
+					fmt.Println("removing failed : ",err)
+				}
 				ies := c.ReadIndexEntries()
 				for i, ie := range ies {
 					uid2kill, _ := strconv.Atoi(finf.Name())
