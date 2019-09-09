@@ -27,9 +27,15 @@ function read(id) {
 	});
 }
 
+var firstElId;
+
 function loadmsglist(query) {
 	var e=document.getElementById("msglistContainer");
 	e.innerHTML="Loading...";
+	commandMode=true;
+	updCmdModeIndicator();
+	hRows={};
+	document.getElementById("query").blur();
 	fetch("/cmd?q="+encodeURIComponent(query)).then(function(response) {
 		response.text().then(function(txt) {
 			e.innerHTML=txt;
@@ -39,14 +45,15 @@ function loadmsglist(query) {
 				var nextid=rows[(el+1)%rows.length].getAttribute("data-mid");
 				elt.setAttribute("data-nextid",nextid);
 				hRows[elt.getAttribute("data-mid")]=elt;
+				if(el==0) firstEltId=elt.getAttribute("data-mid");
 				elt.onclick=function(ee) { 
 					read(ee.currentTarget.getAttribute("data-mid")); 
 				}
 			}
 			document.title="("+rows.length+") "+query+" CountablyMany";
-			if(document.location.hash) {
+			if(document.location.hash && document.location.hash.indexOf(encodeURIComponent(query)>=0)) {
 				read(decodeURIComponent(document.location.hash.substr(1,document.location.hash.length)));
-			}
+			} 
 		});
 	});
 }
@@ -144,7 +151,10 @@ document.addEventListener("keydown", function(e) {
 		cmdAndNext("done","Done");
 	}
 
-
+	else if(e.key=="G") {
+		if(firstEltId)
+			read(firstEltId);
+	}
 
 	else if(e.key=="q") {
 		loadmsglist(document.getElementById("query").value);

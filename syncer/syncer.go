@@ -20,6 +20,8 @@ import ( "fmt"
 
 var separ string
 
+var SyncerLog string
+
 type Account struct {
 	Server string
 	User string
