@@ -234,7 +234,14 @@ func (ies IndexEntries) ListMessagesHTML(path string, prepath string) string {
 				dateLbl = dateH
 			}
 			from := ie.F
-			from = strings.Split(strings.ReplaceAll(from, "\"", ""), "<")[0]
+			from = strings.ReplaceAll(from, "\"", "")
+			from = strings.ReplaceAll(from, "  ", " ")
+			fromsplit := strings.Split(from, "<")
+			if fromsplit[0] != "" {
+				from = fromsplit[0]
+			} else {
+				from = fromsplit[1]
+			}
 			curpath := ""
 			if multiboxes {
 				curpath = "<span>" + ie.A + "/" + ie.M + "</span>"
@@ -507,18 +514,22 @@ func SyncerMain() {
 	separ := string(filepath.Separator)
 	conf := ReadConfig()
 	for acc := range conf.Acc {
-		imapconn, _ := Login(conf.Acc[acc])
-		for mbox := range conf.Acc[acc].Mailboxes {
-			if imapconn.FetchNewInMailbox(conf, acc, mbox, 0) != nil {
-				fmt.Println("FetchNewInMailbox returning error, stopping right now")
-				return
+		imapconn, err := Login(conf.Acc[acc])
+		if err!=nil {
+			fmt.Println("login error, skipping account ",acc)
+		} else {
+			for mbox := range conf.Acc[acc].Mailboxes {
+				if imapconn.FetchNewInMailbox(conf, acc, mbox, 0) != nil {
+					fmt.Println("FetchNewInMailbox returning error, stopping right now")
+					return
+				}
 			}
-		}
-		for mbox := range conf.Acc[acc].Mailboxes {
-			imapconn.AppendFilesInDir(conf, acc, mbox, conf.Path+separ+acc+separ+mbox+separ+"appends", false, false)
-		}
-		for mbox := range conf.Acc[acc].Mailboxes {
-			imapconn.MoveInMailbox(conf, acc, mbox)
+			for mbox := range conf.Acc[acc].Mailboxes {
+				imapconn.AppendFilesInDir(conf, acc, mbox, conf.Path+separ+acc+separ+mbox+separ+"appends", false, false)
+			}
+			for mbox := range conf.Acc[acc].Mailboxes {
+				imapconn.MoveInMailbox(conf, acc, mbox)
+			}
 		}
 	}
 }
