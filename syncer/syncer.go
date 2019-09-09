@@ -211,7 +211,11 @@ type htmlLine struct {
 	rHtml string
 }
 
-func (ies IndexEntries) ListMessagesHTML(path string) string {
+func (ies IndexEntries) ListMessagesHTML(path string, prepath string) string {
+	multiboxes:=false
+	if strings.Index(path,"*")>=0 {
+		multiboxes=true
+	}
 	a:=strings.Split(path,"/")
 	if len(a)<2  {
 		return "invalid path"
@@ -221,7 +225,7 @@ func (ies IndexEntries) ListMessagesHTML(path string) string {
 	dateND:=time.Now().Format("02/01/2006")
 	lines:=[]htmlLine{}
 	for _,ie:=range ies {
-		if ie.A==account && ie.M==locmb {
+		if (account=="*"||ie.A==account) && (locmb=="*"||ie.M==locmb) {
 			parsed,err:=time.Parse("Mon, _2 Jan 2006 15:04:05 -0700",ie.D)
 			if err!=nil {
 				parsed,_=time.Parse("Mon, _2 Jan 2006 15:04:05 -0700 (MST)",ie.D)
@@ -233,13 +237,27 @@ func (ies IndexEntries) ListMessagesHTML(path string) string {
 			}
 			from:=ie.F
 			from=strings.Split(strings.ReplaceAll(from,"\"",""),"<")[0]
-			lines=append(lines, htmlLine{rHtml: fmt.Sprintf("<div class=msglistRow data-mid='%s'><span>%s</span><span>%s</span><span>%s</span></div>",path+"/"+strconv.Itoa(int(ie.U)),dateLbl,from,html.EscapeString(ie.S)), rTime: parsed.Unix()})
+			curpath:=""
+			if multiboxes {
+				curpath="<span>"+ie.A+"/"+ie.M+"</span>"
+			}
+			pendingMove,_:=ioutil.ReadFile(prepath+separ+ie.A+separ+ie.M+separ+"moves"+separ+strconv.Itoa(int(ie.U)))
+			pendingMovestr:=string(pendingMove)
+			if pendingMovestr!="" {
+				pendingMovestr="<span>&rarr; "+pendingMovestr+"</span>";
+			}
+			lines=append(lines, htmlLine{rHtml:
+							fmt.Sprintf("<div class=msglistRow data-mid='%s'><span>%s</span><span>%s</span><span>%s</span>%s%s</div>",ie.A+"/"+ie.M+"/"+strconv.Itoa(int(ie.U)),dateLbl,from,html.EscapeString(ie.S),curpath,pendingMovestr),
+												   rTime: parsed.Unix()})
 		}
 	}
 	s:=""
 	sort.Slice(lines, func(i int, j int)bool { return lines[i].rTime>lines[j].rTime })
 	for _,l:=range lines {
 		s=s+l.rHtml
+	}
+	if s=="" {
+		s="No mail."
 	}
 	return s
 

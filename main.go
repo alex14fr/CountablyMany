@@ -73,7 +73,7 @@ func HdlCmd(r http.ResponseWriter, q *http.Request) {
 	}
 
 	SyncerIes=SyncerConfig.ReadIndexEntries()
-	outstr := SyncerIes.ListMessagesHTML(query)
+	outstr := SyncerIes.ListMessagesHTML(query,SyncerConfig.Path)
 
 	if HandleETag(r, q, ETagS(outstr)) {
 		return
@@ -178,6 +178,62 @@ func HdlRead(r http.ResponseWriter, q *http.Request) {
 	fmt.Fprint(r, htmlmail+"</div>")
 
 }
+
+func HdlReplytemplate(r http.ResponseWriter, q *http.Request) {
+	if !HookAuth(r, q) {
+		return
+	}
+
+	SyncerIes=SyncerConfig.ReadIndexEntries()
+	id := q.FormValue("id")
+	file, fname := GetMessageFile(r, q)
+	_=fname
+/*	if HandleETag(r, q, ETagF(fname)) {
+		return
+	} */
+	mail, err2 := enmime.ReadEnvelope(bufio.NewReader(file))
+	if err2 != nil {
+		fmt.Fprint(r, "Can't parse mail id "+id+" ",err2)
+		return
+	}
+	replyto:=mail.GetHeader("From")
+	if mail.GetHeader("Reply-to")!="" {
+		replyto=mail.GetHeader("Reply-to")
+	}
+	subjectre:="Re: "+mail.GetHeader("Subject")
+	if strings.Index(mail.GetHeader("Subject"),"Re:")>=0 || strings.Index(mail.GetHeader("Subject"),"re:")>=0 {
+		subjectre=mail.GetHeader("Subject")
+	}
+	mailtxt:=mail.Text
+	mailtxt="> "+strings.ReplaceAll(mailtxt,"\n","\n> ")
+	if strings.Index(replyto,"<")>=0 {
+		replyto=strings.Split(replyto,"<")[1]
+		replyto=replyto[:len(replyto)-1]
+	}
+	replyidentity:="default"
+	for identity,_ := range OutIdentities {
+		outId := (OutIdentities[identity]).(map[string]interface {})
+		fromaddr := outId["fromaddr"].(string)
+		if(strings.Index(mail.GetHeader("To")+mail.GetHeader("Cc"),fromaddr)>=0) {
+			replyidentity=identity
+			break
+		}
+	}
+	fmt.Fprint(r,replyidentity+"\r\n"+
+				"To: "+replyto+"\r\n"+
+				"Cc: \r\n"+
+				"Subject: "+subjectre+"\r\n"+
+				"In-reply-to: "+mail.GetHeader("Message-ID")+"\r\n"+
+				"References: "+mail.GetHeader("Message-ID")+" "+mail.GetHeader("References")+"\r\n"+
+				"@endheaders\r\n"+
+				"\r\n\r\n\r\n"+
+				"--- Original message ---\r\n"+
+				"From: "+mail.GetHeader("From")+"\r\n"+
+				"Subject: "+mail.GetHeader("Subject")+"\r\n"+
+				"Date: "+mail.GetHeader("Date")+"\r\n\r\n"+mailtxt);
+
+}
+
 
 func HdlAttachGet(r http.ResponseWriter, q *http.Request) {
 	if !HookAuth(r, q) {
@@ -356,6 +412,7 @@ func main() {
 	http.HandleFunc("/", HdlRes)
 	http.HandleFunc("/cmd", HdlCmd)
 	http.HandleFunc("/read", HdlRead)
+	http.HandleFunc("/replytemplate", HdlReplytemplate)
 	http.HandleFunc("/attachget", HdlAttachGet)
 	http.HandleFunc("/compose", HdlCompose)
 	http.HandleFunc("/send", HdlSend)
