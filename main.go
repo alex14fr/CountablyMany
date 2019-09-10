@@ -67,7 +67,7 @@ func HdlCmd(r http.ResponseWriter, q *http.Request) {
 		subjectspl := strings.Split(subject, "/")
 		fnam := SyncerConfig.Path + separ + subjectspl[0] + separ + subjectspl[1] + separ + "moves" + separ + subjectspl[2]
 		cnt := []byte(movedest)
-		err := ioutil.WriteFile(fnam, cnt, 0600)
+		err := ioutil.WriteFile(fnam, cnt, 0660)
 		fmt.Fprint(r, "wrote "+string(cnt)+" in "+fnam+" ", err)
 		return
 	}

@@ -503,14 +503,14 @@ func SyncerMkdirs() {
 	separ := string(filepath.Separator)
 	c := ReadConfig()
 	p := c.Path
-	os.Mkdir(p, 0700)
+	os.Mkdir(p, 0770)
 	for acc := range c.Acc {
-		os.Mkdir(p+separ+acc, 0700)
+		os.Mkdir(p+separ+acc, 0770)
 		for mbox := range c.Acc[acc].Mailboxes {
-			os.Mkdir(p+separ+acc+separ+mbox, 0700)
-			os.Mkdir(p+separ+acc+separ+mbox+separ+"moves", 0700)
-			os.Mkdir(p+separ+acc+separ+mbox+separ+"appends", 0700)
-			os.Mkdir(p+separ+acc+separ+mbox+separ+"appended", 0700)
+			os.Mkdir(p+separ+acc+separ+mbox, 0770)
+			os.Mkdir(p+separ+acc+separ+mbox+separ+"moves", 0770)
+			os.Mkdir(p+separ+acc+separ+mbox+separ+"appends", 0770)
+			os.Mkdir(p+separ+acc+separ+mbox+separ+"appended", 0770)
 		}
 	}
 }
