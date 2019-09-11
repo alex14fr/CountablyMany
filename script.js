@@ -127,7 +127,7 @@ document.addEventListener("keydown", function(e) {
 		prevMsg();
 	}
 
-	else if(e.key=="K") {
+	else if(e.key=="Delete") {
 		cmdAndNext("KILL","Killed");
 	}
 
@@ -178,6 +178,11 @@ document.addEventListener("keydown", function(e) {
 		window.open('#compose,r:'+curId);
 	}
 
+	else if(e.key=="R") {
+		window.open('#compose,all,r:'+curId);
+	}
+
+
 	else if(e.key=="f") {
 		window.open('#compose,f:'+curId);
 	}
@@ -226,10 +231,13 @@ function toComposeMode() {
 	document.getElementById('showmsg').style.display='none';
 	document.getElementById('cmdForm').style.display='none';
 	document.getElementById('composer').style.display='block';
+	all=0;
+	if(document.location.hash.indexOf(",all,")>=0)
+		all=1;
 	var ii=document.location.hash.indexOf(",r:");
 	if(ii>=0) {
 		var reply2msg=document.location.hash.substr(ii+3,document.location.hash.length);
-		fetch("/replytemplate?id="+reply2msg).then(function(response) {
+		fetch("/replytemplate?all="+all+"&id="+reply2msg).then(function(response) {
 										response.text().then(function(txt) {
 											document.getElementById('compose').innerHTML=txt;
 										});      });

@@ -441,10 +441,10 @@ func (imc *IMAPConn) MoveInMailbox(c Config, account string, localmbname string)
 				imc.WriteLine("x expunge")
 				imc.ReadLine("x ")
 				fname := c.Path + separ + account + separ + localmbname + separ + finf.Name()
-				fmt.Println("removing ",fname)
+				fmt.Println("removing ", fname)
 				err := os.Remove(fname)
-				if err!=nil {
-					fmt.Println("removing failed : ",err)
+				if err != nil {
+					fmt.Println("removing failed : ", err)
 				}
 				ies := c.ReadIndexEntries()
 				for i, ie := range ies {
@@ -520,8 +520,8 @@ func SyncerMain() {
 	conf := ReadConfig()
 	for acc := range conf.Acc {
 		imapconn, err := Login(conf.Acc[acc])
-		if err!=nil {
-			fmt.Println("login error, skipping account ",acc)
+		if err != nil {
+			fmt.Println("login error, skipping account ", acc)
 		} else {
 			for mbox := range conf.Acc[acc].Mailboxes {
 				if imapconn.FetchNewInMailbox(conf, acc, mbox, 0) != nil {
