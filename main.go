@@ -313,7 +313,7 @@ func addAttach(r http.ResponseWriter, q *http.Request, suffix string, boundary s
 	}
 	d, _ := ioutil.ReadAll(mpf)
 	return "\n--" + boundary + "\n" +
-		"Content-disposition: attachment;filename=" + mpfh.Filename + "\n" +
+		"Content-disposition: attachment;filename=\"" + mpfh.Filename + "\"\n" +
 		"Content-type: " + mpfh.Header.Get("Content-type") + "\n" +
 		"Content-transfer-encoding: base64\n\n" +
 		base64.StdEncoding.EncodeToString(d) + "\n"
@@ -429,14 +429,16 @@ func main() {
 	http.HandleFunc("/read", HdlRead)
 	http.HandleFunc("/replytemplate", HdlReplytemplate)
 	http.HandleFunc("/attachget", HdlAttachGet)
-	http.HandleFunc("/compose", HdlCompose)
 	http.HandleFunc("/send", HdlSend)
-	http.HandleFunc("/reply", HdlReply)
 	http.HandleFunc("/source", HdlSource)
 	http.HandleFunc("/resync", HdlResync)
+	var err error;
 	if viper.GetString("TLSCert") != "" && viper.GetString("TLSKey") != "" {
-		http.ListenAndServeTLS(viper.GetString("ListenAddr"), viper.GetString("TLSCert"), viper.GetString("TLSKey"), nil)
+		err=http.ListenAndServeTLS(viper.GetString("ListenAddr"), viper.GetString("TLSCert"), viper.GetString("TLSKey"), nil)
 	} else {
-		http.ListenAndServe(viper.GetString("ListenAddr"), nil)
+		err=http.ListenAndServe(viper.GetString("ListenAddr"), nil)
+	}
+	if err!=nil {
+		fmt.Println(err)
 	}
 }

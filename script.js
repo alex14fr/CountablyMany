@@ -196,7 +196,9 @@ document.addEventListener("DOMContentLoaded", function(e) {
 		return;
 	}
 	if(!document.location.hash) {
-		document.location.hash='#'+encodeURIComponent('*/inbox');
+		document.location.hash='#'+encodeURIComponent('inbox');
+		document.getElementById("query").value="inbox";
+		document.getElementById("cmdForm").submit();
 	}
 	adjustsizes();
 	document.getElementById("cmdForm").addEventListener("submit", function(e) {
