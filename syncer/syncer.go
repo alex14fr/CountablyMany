@@ -179,7 +179,17 @@ func ReadConfig() Config {
 func MakeIEFromFile(filename string) IndexEntry {
 	ie := IndexEntry{U: 0, A: "nonexistent-account", M: "nonexistent-mailbox"}
 	fil, _ := os.Open(filename)
-	env, _ := enmime.ReadEnvelope(fil)
+	env, err := enmime.ReadEnvelope(fil)
+	if err != nil {
+		fmt.Println("! error reading envelope for ", fil)
+		ie.F="unknown <u@u.tld>";
+		ie.S="unknown subject";
+		ie.D="0";
+		ie.I="unknown.message-id@nonexistent.tld";
+		return ie;
+	}
+	//fmt.Println(filename)
+
 	ie.F = env.GetHeader("From")
 	ie.S = env.GetHeader("Subject")
 	ie.D = env.GetHeader("Date")
