@@ -405,9 +405,11 @@ func main() {
 		return
 	}
 
-	viper.SetDefault("ListenAddr", ":1336")
+	viper.SetDefault("ListenAddr", "127.0.0.1:1336")
+	/*
 	viper.SetDefault("TLSCert", "cert.pem")
 	viper.SetDefault("TLSKey", "key.pem")
+	*/
 	viper.SetDefault("LoginHash", "Y2hhbmdlOnRoaXM=") //change:this
 	viper.SetDefault("MaxMessages", 30000)
 	viper.SetDefault("StartupCommand", "")
