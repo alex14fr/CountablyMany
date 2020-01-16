@@ -93,7 +93,7 @@ function updCmdModeIndicator() {
 }
 
 document.addEventListener("keydown", function(e) {
-	if(composeMode) {
+	if(e.ctrlKey||composeMode) {
 		return;
 	}
 

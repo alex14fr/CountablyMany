@@ -60,6 +60,8 @@ func HdlCmd(r http.ResponseWriter, q *http.Request) {
 	}
 	query := q.FormValue("q")
 
+	r.Header().Set("Pragma","no-cache")
+
 	querys := strings.Split(query, "##")
 	if len(querys) > 1 {
 		subject := querys[0]
@@ -103,7 +105,7 @@ func HdlSource(r http.ResponseWriter, q *http.Request) {
 	}
 
 	SyncerIes = SyncerConfig.ReadIndexEntries()
-	r.Header().Set("Content-type", "text/plain")
+	r.Header().Set("Content-Type", "text/plain")
 	_, fname := GetMessageFile(r, q)
 	http.ServeFile(r, q, fname)
 }
@@ -136,6 +138,9 @@ func ETagS(str string) string {
 }
 
 func HandleETag(r http.ResponseWriter, q *http.Request, etag string) bool {
+	return false
+
+
 	r.Header().Set("ETag", etag)
 	if q.Header.Get("If-None-Match") == etag {
 		r.WriteHeader(304)
@@ -152,6 +157,7 @@ func HdlRead(r http.ResponseWriter, q *http.Request) {
 	SyncerIes = SyncerConfig.ReadIndexEntries()
 	id := q.FormValue("id")
 	file, fname := GetMessageFile(r, q)
+	//fmt.Println("hdlread ",file,fname)
 	if HandleETag(r, q, ETagF(fname)) {
 		return
 	}
@@ -285,11 +291,11 @@ func HdlAttachGet(r http.ResponseWriter, q *http.Request) {
 	}
 	for _, att := range append(mail.Attachments, mail.Inlines...) {
 		if att.FileName == cid {
-			r.Header().Set("Content-type", att.ContentType)
+			r.Header().Set("Content-Type", att.ContentType)
 			if mode == "attach" {
-				r.Header().Set("Content-disposition", "attachment;filename=\""+att.FileName+"\"")
+				r.Header().Set("Content-Disposition", "attachment; filename=\""+att.FileName+"\"")
 			} else {
-				r.Header().Set("Content-disposition", "inline")
+				r.Header().Set("Content-Disposition", "inline")
 			}
 			fmt.Fprintf(r, "%s", att.Content)
 			return
@@ -313,8 +319,8 @@ func addAttach(r http.ResponseWriter, q *http.Request, suffix string, boundary s
 	}
 	d, _ := ioutil.ReadAll(mpf)
 	return "\n--" + boundary + "\n" +
-		"Content-disposition: attachment;filename=\"" + mpfh.Filename + "\"\n" +
-		"Content-type: " + mpfh.Header.Get("Content-type") + "\n" +
+		"Content-Disposition: attachment; filename=\"" + mpfh.Filename + "\"\n" +
+		"Content-Type: " + mpfh.Header.Get("Content-Type") + "\n" +
 		"Content-transfer-encoding: base64\n\n" +
 		base64.StdEncoding.EncodeToString(d) + "\n"
 }
@@ -332,12 +338,12 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 
 	boundary := "b" + fmt.Sprintf("%x", rand.Uint64())
 	endheaders := "Date: " + time.Now().Format(time.RFC1123Z) + "\n" +
-		"Content-transfer-encoding: 8bit\n" +
-		"Content-type: multipart/alternative;boundary=" + boundary + "\n" +
+		"Content-Transfer-Encoding: 8bit\n" +
+		"Content-Type: multipart/alternative; boundary=" + boundary + "\n" +
 		"MIME-Version: 1.0\n\n" +
 		"--" + boundary + "\n" +
-		"Content-type: text/plain;charset=utf8\n" +
-		"Content-transfer-encoding: 8bit\n"
+		"Content-Type: text/plain; charset=utf8\n" +
+		"Content-Transfer-Encoding: 8bit\n"
 
 	composeText = strings.Replace(composeText, "@endheaders", endheaders, 1)
 	outId := (OutIdentities[identity]).(map[string]interface{})
@@ -389,7 +395,7 @@ func HdlResync(r http.ResponseWriter, q *http.Request) {
 	if !HookAuth(r, q) {
 		return
 	}
-
+	r.Header().Set("Pragma","no-cache")
 	<-ChanSyncerLoop
 	ChanSyncerLoop <- 1
 	fmt.Fprint(r, "ok")
