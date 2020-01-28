@@ -265,6 +265,7 @@ func HdlReplytemplate(r http.ResponseWriter, q *http.Request) {
 		"\r\n\r\n\r\n"+
 		"--- Original message ---\r\n"+
 		"From: "+mail.GetHeader("From")+"\r\n"+
+		"To: "+mail.GetHeader("To")+"\r\n"+
 		"Subject: "+mail.GetHeader("Subject")+"\r\n"+
 		"Date: "+mail.GetHeader("Date")+"\r\n\r\n"+mailtxt)
 	if fwdMode {
