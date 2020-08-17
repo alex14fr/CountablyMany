@@ -140,13 +140,14 @@ func ETagS(str string) string {
 func HandleETag(r http.ResponseWriter, q *http.Request, etag string) bool {
 	return false
 
-
+/*
 	r.Header().Set("ETag", etag)
 	if q.Header.Get("If-None-Match") == etag {
 		r.WriteHeader(304)
 		return true
 	}
 	return false
+*/
 }
 
 func HdlRead(r http.ResponseWriter, q *http.Request) {

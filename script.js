@@ -218,7 +218,7 @@ document.addEventListener("DOMContentLoaded", function(e) {
 	});
 	window.setInterval(function() { 
 									fetch("/resync"); 
-									window.setTimer(function(){
+									window.setTimeout(function(){
 												loadmsglist(document.getElementById("query").value);
 												},15*1000); }, 3*60*1000);
 
