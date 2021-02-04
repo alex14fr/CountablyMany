@@ -323,7 +323,7 @@ func addAttach(r http.ResponseWriter, q *http.Request, suffix string, boundary s
 	return "\n--" + boundary + "\n" +
 		"Content-Disposition: attachment; filename=\"" + mpfh.Filename + "\"\n" +
 		"Content-Type: " + mpfh.Header.Get("Content-Type") + "\n" +
-		"Content-transfer-encoding: base64\n\n" +
+		"Content-Transfer-Encoding: base64\n\n" +
 		base64.StdEncoding.EncodeToString(d) + "\n"
 }
 
@@ -341,7 +341,7 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 	boundary := "b" + fmt.Sprintf("%x", rand.Uint64())
 	endheaders := "Date: " + time.Now().Format(time.RFC1123Z) + "\n" +
 		"Content-Transfer-Encoding: 8bit\n" +
-		"Content-Type: multipart/alternative; boundary=" + boundary + "\n" +
+		"Content-Type: multipart/mixed; boundary=" + boundary + "\n" +
 		"MIME-Version: 1.0\n\n" +
 		"--" + boundary + "\n" +
 		"Content-Type: text/plain; charset=utf8\n" +

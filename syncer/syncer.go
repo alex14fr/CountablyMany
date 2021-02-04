@@ -247,7 +247,7 @@ func (ies IndexEntries) ListMessagesHTML(path string, prepath string) string {
 			from = strings.ReplaceAll(from, "\"", "")
 			from = strings.ReplaceAll(from, "  ", " ")
 			fromsplit := strings.Split(from, "<")
-			if fromsplit[0] != "" {
+			if fromsplit[0] != "" || len(fromsplit)<2 {
 				from = fromsplit[0]
 			} else {
 				from = fromsplit[1]
