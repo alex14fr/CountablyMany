@@ -193,7 +193,7 @@ func HdlRead(r http.ResponseWriter, q *http.Request) {
 func extractAddr(in string) string {
 	var addrs []string
 	var ss string
-	insplt := strings.Split(in, ",")
+	insplt := strings.Split(in + ",", ",")
 	for _, nm := range insplt {
 		if strings.Index(nm, "<") >= 0 {
 			ss = strings.Split(nm, "<")[1]
@@ -201,7 +201,9 @@ func extractAddr(in string) string {
 		} else {
 			ss = nm
 		}
-		addrs = append(addrs, ss)
+		if ss != "" {
+			addrs = append(addrs, ss)
+		}
 	}
 	return strings.Join(addrs, ",")
 }
@@ -232,7 +234,7 @@ func HdlReplytemplate(r http.ResponseWriter, q *http.Request) {
 			replyto = mail.GetHeader("Reply-to")
 		}
 		if q.FormValue("all") == "1" {
-			replyto = replyto + "," + mail.GetHeader("To")
+			replyto = replyto + "," + mail.GetHeader("To") + "," + mail.GetHeader("Cc")
 		}
 		replyto = extractAddr(replyto)
 		subjectre = "Re: " + mail.GetHeader("Subject")
@@ -267,6 +269,7 @@ func HdlReplytemplate(r http.ResponseWriter, q *http.Request) {
 		"--- Original message ---\r\n"+
 		"From: "+mail.GetHeader("From")+"\r\n"+
 		"To: "+mail.GetHeader("To")+"\r\n"+
+		"Cc: "+mail.GetHeader("Cc")+"\r\n"+
 		"Subject: "+mail.GetHeader("Subject")+"\r\n"+
 		"Date: "+mail.GetHeader("Date")+"\r\n\r\n"+mailtxt)
 	if fwdMode {

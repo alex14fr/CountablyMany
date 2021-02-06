@@ -230,15 +230,18 @@ func (ies IndexEntries) ListMessagesHTML(path string, prepath string) string {
 	}
 	account := a[0]
 	locmb := a[1]
-	dateND := time.Now().Format("02/01/2006")
+	dateND := time.Now().Format("02/01/06")
 	lines := []htmlLine{}
 	for _, ie := range ies {
 		if (account == "*" || ie.A == account) && (locmb == "*" || ie.M == locmb) {
 			parsed, err := time.Parse("Mon, _2 Jan 2006 15:04:05 -0700", ie.D)
 			if err != nil {
-				parsed, _ = time.Parse("Mon, _2 Jan 2006 15:04:05 -0700 (MST)", ie.D)
+				parsed, err = time.Parse("Mon, _2 Jan 2006 15:04:05 -0700 (MST)", ie.D)
 			}
-			dateLbl := parsed.Format("02/01/2006")
+			if err != nil {
+				parsed, err = time.Parse("Mon, _2 Jan 2006 15:04:05 MST", ie.D)
+			}
+			dateLbl := parsed.Format("02/01/06")
 			dateH := parsed.Format("15:04")
 			if dateLbl == dateND {
 				dateLbl = dateH
