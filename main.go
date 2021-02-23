@@ -1,6 +1,7 @@
 package main
 
 import (
+	_ "github.com/pkg/profile"
 	"bufio"
 	"encoding/base64"
 	"fmt"
@@ -350,6 +351,12 @@ func readStr(rw *bufio.ReadWriter) (string) {
 	return retstr
 }
 
+func checkAttach(q *http.Request, v string) bool {
+	_,mpfh,_:=q.FormFile(v)
+	fmt.Print("checkAttach of ", v, " : ", mpfh!=nil)
+	return mpfh!=nil
+}
+
 func Sendmail(host string, user string, pass string, from string, to []string, data string) (string) {
 	conn, err := tls.Dial("tcp", host, &tls.Config{})
 	if err != nil { 
@@ -387,14 +394,22 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 
 	boundary := "b" + fmt.Sprintf("%x", rand.Uint64())
 	outId := (OutIdentities[identity]).(map[string]interface{})
+	multipart := checkAttach(q,"attach1") || checkAttach(q,"attach2") || checkAttach(q,"attach3") || checkAttach(q,"attach4")
 	endheaders := "MIME-Version: 1.0\n"+
 	"Date: " + time.Now().Format(time.RFC1123Z) + "\n" +
 		"Content-Transfer-Encoding: 8bit\n" +
-		"Content-Type: multipart/mixed; boundary=\"" + boundary + "\"\n" +
-		"Message-ID: <"+fmt.Sprintf("%x%x%x",rand.Uint64(),rand.Uint64(),rand.Uint64())+"@"+strings.Split(outId["fromaddr"].(string),"@")[1]+">\n\n"+
-		"--" + boundary + "\n" +
-		"Content-Type: text/plain; charset=\"UTF-8\"\n" +
-		"Content-Transfer-Encoding: 8bit\n"
+		"Content-Type: ";
+	if(multipart) {
+		endheaders+="multipart/mixed; boundary=\"" + boundary + "\""
+	} else {
+		endheaders+="text/plain; charset=\"utf8\""
+	}
+	endheaders+="\nMessage-ID: <"+fmt.Sprintf("%x%x%x",rand.Uint64(),rand.Uint64(),rand.Uint64())+"@"+strings.Split(outId["fromaddr"].(string),"@")[1]+">\n\n";
+	if(multipart) {
+		endheaders += "--" + boundary + "\n" +
+				"Content-Type: text/plain; charset=\"utf8\"\n" +
+				"Content-Transfer-Encoding: 8bit\n"
+	}
 
 	composeText = strings.Replace(composeText, "@endheaders", endheaders, 1)
 	from := outId["fromaddr"].(string)
@@ -411,7 +426,9 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 		addAttach(r, q, "4", boundary)
 
 	composeText = strings.Replace(composeText, identity+"\n", headerTop, 1)
-	composeText += "\n\n--" + boundary + "--"
+	if(multipart) {
+		composeText += "\n\n--" + boundary + "--"
+	}
 	composeText = strings.ReplaceAll(composeText, "\n", "\r\n")
 
 	var toaddrlist, ccaddrlist string
@@ -458,6 +475,9 @@ var OutIdentities map[string]interface{}
 var ChanSyncerLoop chan int
 
 func main() {
+
+
+    //defer profile.Start().Stop()
 	separ = string(filepath.Separator)
 	if os.Getenv("SYNCER") == "1" {
 		syncer.SyncerMain()
