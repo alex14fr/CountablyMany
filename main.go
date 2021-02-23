@@ -12,7 +12,8 @@ import (
 	"math/rand"
 	"net/http"
 	_ "net/mail"
-	"net/smtp"
+//	"net/smtp"
+	"crypto/tls"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -186,6 +187,7 @@ func HdlRead(r http.ResponseWriter, q *http.Request) {
 		htmlmail = string(mail.Text)
 		htmlmail = strings.ReplaceAll(htmlmail, "\n", "<br>")
 	}
+	htmlmail = strings.ReplaceAll(htmlmail, "<base", "<ignore-base")
 	fmt.Fprint(r, htmlmail+"</div>")
 
 }
@@ -330,6 +332,48 @@ func addAttach(r http.ResponseWriter, q *http.Request, suffix string, boundary s
 		base64.RawStdEncoding.EncodeToString(d) + "\n"
 }
 
+func readStr(rw *bufio.ReadWriter) (string) {
+	rw.Flush()
+	retstr := ""
+	nok := true
+	for nok {
+		l, err := rw.ReadString('\n')
+		if err != nil {
+			fmt.Print("readStr error : ")
+			fmt.Print(err)
+			return "error" 
+		}
+		fmt.Print("readStr : "+l)
+		retstr+=l
+		nok = rw.Reader.Buffered()>0
+	}
+	return retstr
+}
+
+func Sendmail(host string, user string, pass string, from string, to []string, data string) (string) {
+	conn, err := tls.Dial("tcp", host, &tls.Config{})
+	if err != nil { 
+		fmt.Print(err)
+		return "dial error"
+	}
+	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
+	readStr(rw)
+	rw.WriteString("ehlo localhost\n"); readStr(rw)
+	rw.WriteString("auth login\n"); readStr(rw)
+	rw.WriteString(base64.StdEncoding.EncodeToString([]byte(user))+"\n"); readStr(rw)
+	rw.WriteString(base64.StdEncoding.EncodeToString([]byte(pass))+"\n"); readStr(rw)
+	rw.WriteString("mail from: <"+from+">\n"); readStr(rw)
+	for _, toaddr := range to {
+		rw.WriteString("rcpt to: <"+toaddr+">\n"); readStr(rw)
+	}
+	rw.WriteString("data\n"); readStr(rw)
+	rw.WriteString(data); 
+	rw.WriteString("\r\n\r\n.\r\n"); 
+	retstr := readStr(rw)
+	conn.Close()
+	return retstr
+}
+
 func HdlSend(r http.ResponseWriter, q *http.Request) {
 	if !HookAuth(r, q) {
 		return
@@ -342,16 +386,17 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 	fmt.Sscanf(composeText, "%s\n", &identity)
 
 	boundary := "b" + fmt.Sprintf("%x", rand.Uint64())
-	endheaders := "Date: " + time.Now().Format(time.RFC1123Z) + "\n" +
+	outId := (OutIdentities[identity]).(map[string]interface{})
+	endheaders := "MIME-Version: 1.0\n"+
+	"Date: " + time.Now().Format(time.RFC1123Z) + "\n" +
 		"Content-Transfer-Encoding: 8bit\n" +
 		"Content-Type: multipart/mixed; boundary=\"" + boundary + "\"\n" +
-		"MIME-Version: 1.0\n\n" +
+		"Message-ID: <"+fmt.Sprintf("%x%x%x",rand.Uint64(),rand.Uint64(),rand.Uint64())+"@"+strings.Split(outId["fromaddr"].(string),"@")[1]+">\n\n"+
 		"--" + boundary + "\n" +
-		"Content-Type: text/plain; charset=utf8\n" +
+		"Content-Type: text/plain; charset=\"UTF-8\"\n" +
 		"Content-Transfer-Encoding: 8bit\n"
 
 	composeText = strings.Replace(composeText, "@endheaders", endheaders, 1)
-	outId := (OutIdentities[identity]).(map[string]interface{})
 	from := outId["fromaddr"].(string)
 	fromName := outId["fromname"].(string)
 	replytoAddr, err := outId["replytoaddr"].(string)
@@ -366,6 +411,7 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 		addAttach(r, q, "4", boundary)
 
 	composeText = strings.Replace(composeText, identity+"\n", headerTop, 1)
+	composeText += "\n\n--" + boundary + "--"
 	composeText = strings.ReplaceAll(composeText, "\n", "\r\n")
 
 	var toaddrlist, ccaddrlist string
@@ -375,24 +421,26 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 		toaddrlist = toaddrlist + "," + ccaddrlist
 	}
 	toaddr := strings.Split(toaddrlist, ",")
-	er := smtp.SendMail(outId["smtphost"].(string),
-		smtp.PlainAuth("",
-			outId["smtpuser"].(string),
-			outId["smtppass"].(string),
-			strings.Split(outId["smtphost"].(string), ":")[0]),
-		from,
-		toaddr,
-		[]byte(composeText))
-	if er != nil {
+	//er := smtp.SendMail(outId["smtphost"].(string),
+		//smtp.CRAMMD5Auth(outId["smtpuser"].(string), outId["smtppass"].(string)),
+	//	smtp.PlainAuth("",
+	//		outId["smtpuser"].(string),
+	//		outId["smtppass"].(string),
+	//		strings.Split(outId["smtphost"].(string), ":")[0]),
+	//	from,
+	//	toaddr,
+	//	[]byte(composeText))
+	status := Sendmail(outId["smtphost"].(string), outId["smtpuser"].(string), outId["smtppass"].(string), from, toaddr, composeText)
+	/*if er != nil {
 		fmt.Fprint(r, "send failed: ", er)
 	} else {
 		fmt.Fprint(r, "send ok")
-	}
-	er = ioutil.WriteFile(outId["outfolder"].(string)+separ+boundary, []byte(composeText), 0600)
+	} */
+	er := ioutil.WriteFile(outId["outfolder"].(string)+separ+boundary, []byte(composeText), 0600)
 	if er != nil {
-		fmt.Fprint(r, " - copy failed: ", er)
+		fmt.Fprint(r, status, " - copy failed: ", er)
 	} else {
-		fmt.Fprint(r, " - copy ok")
+		fmt.Fprint(r, status, " - copy ok")
 	}
 }
 

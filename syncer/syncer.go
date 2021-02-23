@@ -241,6 +241,9 @@ func (ies IndexEntries) ListMessagesHTML(path string, prepath string) string {
 			if err != nil {
 				parsed, err = time.Parse("Mon, _2 Jan 2006 15:04:05 MST", ie.D)
 			}
+			if err != nil {
+				parsed, err = time.Parse("_2 Jan 2006 15:04:05 -0700", ie.D)
+			}
 			dateLbl := parsed.Format("02/01/06")
 			dateH := parsed.Format("15:04")
 			if dateLbl == dateND {
