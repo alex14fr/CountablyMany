@@ -5,9 +5,11 @@ var gnextId=false;
 function read(id) {
 	var x=document.getElementsByClassName('rowselected')
 	if(x[0]) x[0].className="msglistRow";
-	hRows[id].className=hRows[id].className+" rowselected";
+	if(hRows[id])
+		hRows[id].className=hRows[id].className+" rowselected";
 	curId=id;
 	document.location.hash=encodeURIComponent(id);
+	if(!hRows[id]) return;
 	gnextId=hRows[curId].getAttribute("data-nextid");
 	var e=document.getElementById("showmsg"); 
 	e.innerHTML='';
@@ -195,11 +197,6 @@ document.addEventListener("DOMContentLoaded", function(e) {
 		toComposeMode();
 		return;
 	}
-	if(!document.location.hash) {
-		document.location.hash='#'+encodeURIComponent('inbox');
-		document.getElementById("query").value="inbox";
-		document.getElementById("cmdForm").submit();
-	}
 	adjustsizes();
 	document.getElementById("cmdForm").addEventListener("submit", function(e) {
 		var v=document.getElementById("query").value;
@@ -222,6 +219,14 @@ document.addEventListener("DOMContentLoaded", function(e) {
 												loadmsglist(document.getElementById("query").value);
 												},15*1000); }, 3*60*1000);
 
+	if(!document.location.hash) {
+		document.location.hash='#'+encodeURIComponent('inbox');
+		document.getElementById("query").value="inbox";
+		//document.getElementById("cmdForm").submit();
+		loadmsglist("inbox");
+	} else {
+		loadmsglist(document.location.hash);
+	}
 });
 
 window.addEventListener("resize", adjustsizes);
