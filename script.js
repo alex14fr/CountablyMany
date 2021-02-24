@@ -8,7 +8,7 @@ function read(id) {
 	if(hRows[id])
 		hRows[id].className=hRows[id].className+" rowselected";
 	curId=id;
-	document.location.hash=encodeURIComponent(id);
+	//document.location.hash=encodeURIComponent(id);
 	if(!hRows[id]) return;
 	gnextId=hRows[curId].getAttribute("data-nextid");
 	var e=document.getElementById("showmsg"); 
@@ -225,7 +225,9 @@ document.addEventListener("DOMContentLoaded", function(e) {
 		//document.getElementById("cmdForm").submit();
 		loadmsglist("inbox");
 	} else {
-		loadmsglist(document.location.hash);
+		var query=document.location.hash.substring(1,document.location.hash.length);
+		document.getElementById("query").value=query;
+		loadmsglist(query);
 	}
 });
 
