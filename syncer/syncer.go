@@ -21,6 +21,8 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+var sync_in_progress bool
+
 var separ string
 var db (*sql.DB)
 
@@ -532,6 +534,10 @@ func SyncerMkdirs() {
 }
 
 func SyncerMain() {
+	if sync_in_progress {
+		return
+	}
+	sync_in_progress=true
 	separ := string(filepath.Separator)
 	SyncerMkdirs()
 	fmt.Println("SyncerMain starting at ", time.Now().Format(time.ANSIC))
@@ -544,13 +550,15 @@ func SyncerMain() {
 			for mbox := range conf.Acc[acc].Mailboxes {
 				if imapconn.FetchNewInMailbox(conf, acc, mbox, 0) != nil {
 					fmt.Println("FetchNewInMailbox returning error, stopping right now")
-					return
 				}
-				imapconn.AppendFilesInDir(conf, acc, mbox, conf.Path+separ+acc+separ+mbox+separ+"appends", false, false)
-				imapconn.MoveInMailbox(conf, acc, mbox)
+				else {
+					imapconn.AppendFilesInDir(conf, acc, mbox, conf.Path+separ+acc+separ+mbox+separ+"appends", false, false)
+					imapconn.MoveInMailbox(conf, acc, mbox)
+				}
 			}
 		}
 	}
 	fmt.Println("SyncerMain stopping at ", time.Now().Format(time.ANSIC))
+	sync_in_progress=false
 }
 
