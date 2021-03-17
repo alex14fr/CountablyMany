@@ -19,6 +19,7 @@ import (
 	"time"
 	"database/sql"
 	_ "modernc.org/sqlite"
+	"sync"
 )
 
 var sync_in_progress bool
@@ -533,31 +534,38 @@ func SyncerMkdirs() {
 	}
 }
 
+func startIMAPLoop(conf Config, acc string, wg *sync.WaitGroup) {
+	imapconn, err := Login(conf.Acc[acc])
+	if err != nil {
+		fmt.Println("login error, skipping account ", acc)
+	} else {
+		for mbox := range conf.Acc[acc].Mailboxes {
+			if imapconn.FetchNewInMailbox(conf, acc, mbox, 0) != nil {
+				fmt.Println("FetchNewInMailbox returning error, stopping right now")
+			} else {
+				imapconn.AppendFilesInDir(conf, acc, mbox, conf.Path+separ+acc+separ+mbox+separ+"appends", false, false)
+				imapconn.MoveInMailbox(conf, acc, mbox)
+			}
+		}
+	}
+	wg.Done()
+}
+
 func SyncerMain() {
 	if sync_in_progress {
 		return
 	}
 	sync_in_progress=true
-	separ := string(filepath.Separator)
+	separ = string(filepath.Separator)
 	SyncerMkdirs()
 	fmt.Println("SyncerMain starting at ", time.Now().Format(time.ANSIC))
 	conf := ReadConfig()
+	var wg sync.WaitGroup
 	for acc := range conf.Acc {
-		imapconn, err := Login(conf.Acc[acc])
-		if err != nil {
-			fmt.Println("login error, skipping account ", acc)
-		} else {
-			for mbox := range conf.Acc[acc].Mailboxes {
-				if imapconn.FetchNewInMailbox(conf, acc, mbox, 0) != nil {
-					fmt.Println("FetchNewInMailbox returning error, stopping right now")
-				}
-				else {
-					imapconn.AppendFilesInDir(conf, acc, mbox, conf.Path+separ+acc+separ+mbox+separ+"appends", false, false)
-					imapconn.MoveInMailbox(conf, acc, mbox)
-				}
-			}
-		}
+		wg.Add(1)
+		go startIMAPLoop(conf, acc, &wg)
 	}
+	wg.Wait()
 	fmt.Println("SyncerMain stopping at ", time.Now().Format(time.ANSIC))
 	sync_in_progress=false
 }
