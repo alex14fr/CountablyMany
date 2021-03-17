@@ -533,6 +533,8 @@ func SyncerMkdirs() {
 
 func SyncerMain() {
 	separ := string(filepath.Separator)
+	SyncerMkdirs()
+	fmt.Println("SyncerMain starting at ", time.Now().Format(time.ANSIC))
 	conf := ReadConfig()
 	for acc := range conf.Acc {
 		imapconn, err := Login(conf.Acc[acc])
@@ -553,16 +555,6 @@ func SyncerMain() {
 			}
 		}
 	}
+	fmt.Println("SyncerMain stopping at ", time.Now().Format(time.ANSIC))
 }
 
-func SyncerLoop(c chan int) {
-	SyncerMkdirs()
-	for true {
-		fmt.Println("SyncerLoop starting at ", time.Now().Format(time.ANSIC))
-		SyncerMain()
-		fmt.Println("SyncerLoop stopping at ", time.Now().Format(time.ANSIC))
-		c <- 1
-		//time.Sleep(5*time.Minute)
-		<-c
-	}
-}

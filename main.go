@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"github.com/jhillyerd/enmime"
 	"github.com/spf13/viper"
+	"crypto/sha256"
 	"hash/crc64"
 	"html"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
 	_ "net/mail"
-//	"net/smtp"
 	"crypto/tls"
 	"net/url"
 	"os"
@@ -62,7 +62,7 @@ func HdlCmd(r http.ResponseWriter, q *http.Request) {
 	}
 	query := q.FormValue("q")
 
-	r.Header().Set("Pragma","no-cache")
+	r.Header().Set("Cache-control","no-store")
 
 	querys := strings.Split(query, "##")
 	if len(querys) > 1 {
@@ -141,7 +141,6 @@ func ETagS(str string) string {
 
 func HandleETag(r http.ResponseWriter, q *http.Request, etag string) bool {
 	return false
-
 /*
 	r.Header().Set("ETag", etag)
 	if q.Header.Get("If-None-Match") == etag {
@@ -326,11 +325,11 @@ func addAttach(r http.ResponseWriter, q *http.Request, suffix string, boundary s
 		return ""
 	}
 	d, _ := ioutil.ReadAll(mpf)
-	return "\n--" + boundary + "\n" +
-		"Content-Disposition: attachment; filename=\"" + mpfh.Filename + "\"\n" +
-		"Content-Type: " + mpfh.Header.Get("Content-Type") + "; name=\"" + mpfh.Filename+"\"\n" +
-		"Content-Transfer-Encoding: base64\n\n" +
-		base64.RawStdEncoding.EncodeToString(d) + "\n"
+	return "\r\n--" + boundary + "\r\n" +
+		"Content-Disposition: attachment; filename=\"" + mpfh.Filename + "\"\r\n" +
+		"Content-Type: " + mpfh.Header.Get("Content-Type") + "; name=\"" + mpfh.Filename+"\"\r\n" +
+		"Content-Transfer-Encoding: base64\r\n\r\n" +
+		base64.StdEncoding.EncodeToString(d)
 }
 
 func readStr(rw *bufio.ReadWriter) (string) {
@@ -365,17 +364,17 @@ func Sendmail(host string, user string, pass string, from string, to []string, d
 	}
 	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 	readStr(rw)
-	rw.WriteString("ehlo localhost\n"); readStr(rw)
-	rw.WriteString("auth login\n"); readStr(rw)
-	rw.WriteString(base64.StdEncoding.EncodeToString([]byte(user))+"\n"); readStr(rw)
-	rw.WriteString(base64.StdEncoding.EncodeToString([]byte(pass))+"\n"); readStr(rw)
-	rw.WriteString("mail from: <"+from+">\n"); readStr(rw)
+	rw.WriteString("ehlo localhost\r\n"); readStr(rw)
+	rw.WriteString("auth login\r\n"); readStr(rw)
+	rw.WriteString(base64.StdEncoding.EncodeToString([]byte(user))+"\r\n"); readStr(rw)
+	rw.WriteString(base64.StdEncoding.EncodeToString([]byte(pass))+"\r\n"); readStr(rw)
+	rw.WriteString("mail from: <"+from+">\r\n"); readStr(rw)
 	for _, toaddr := range to {
-		rw.WriteString("rcpt to: <"+toaddr+">\n"); readStr(rw)
+		rw.WriteString("rcpt to: <"+toaddr+">\r\n"); readStr(rw)
 	}
-	rw.WriteString("data\n"); readStr(rw)
+	rw.WriteString("data\r\n"); readStr(rw)
 	rw.WriteString(data); 
-	rw.WriteString("\r\n\r\n.\r\n"); 
+	rw.WriteString("\r\n.\r\n"); 
 	retstr := readStr(rw)
 	conn.Close()
 	return retstr
@@ -395,29 +394,31 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 	boundary := "b" + fmt.Sprintf("%x", rand.Uint64())
 	outId := (OutIdentities[identity]).(map[string]interface{})
 	multipart := checkAttach(q,"attach1") || checkAttach(q,"attach2") || checkAttach(q,"attach3") || checkAttach(q,"attach4")
-	endheaders := "MIME-Version: 1.0\n"+
-	"Date: " + time.Now().Format(time.RFC1123Z) + "\n" +
-		"Content-Transfer-Encoding: 8bit\n" +
+	endheaders := "MIME-Version: 1.0\r\n"+
+	"Date: " + time.Now().Format(time.RFC1123Z) + "\r\n" +
+	"Message-ID: <"+fmt.Sprintf("%x",rand.Uint64()) +
+						fmt.Sprintf("%x",sha256.Sum256([]byte(composeText))) +
+						fmt.Sprintf("%x",rand.Uint64()) +
+						"@"+strings.Split(outId["fromaddr"].(string),"@")[1]+">\r\n" +
+		"Content-Transfer-Encoding: 8bit\r\n" +
 		"Content-Type: ";
 	if(multipart) {
-		endheaders+="multipart/mixed; boundary=\"" + boundary + "\""
+		endheaders+="multipart/mixed; boundary=\"" + boundary + "\"\r\n\r\n" +
+						"This is a multipart message in MIME format. \r\n\r\n" +
+						"--" + boundary + "\r\n" +
+						"Content-Type: text/plain; charset=\"utf8\"\r\n" +
+						"Content-Transfer-Encoding: 8bit\r\n"
 	} else {
-		endheaders+="text/plain; charset=\"utf8\""
-	}
-	endheaders+="\nMessage-ID: <"+fmt.Sprintf("%x%x%x",rand.Uint64(),rand.Uint64(),rand.Uint64())+"@"+strings.Split(outId["fromaddr"].(string),"@")[1]+">\n\n";
-	if(multipart) {
-		endheaders += "--" + boundary + "\n" +
-				"Content-Type: text/plain; charset=\"utf8\"\n" +
-				"Content-Transfer-Encoding: 8bit\n"
+		endheaders+="text/plain; charset=\"utf8\"\r\n"
 	}
 
 	composeText = strings.Replace(composeText, "@endheaders", endheaders, 1)
 	from := outId["fromaddr"].(string)
 	fromName := outId["fromname"].(string)
 	replytoAddr, err := outId["replytoaddr"].(string)
-	headerTop := "From: " + fromName + " <" + from + ">\n"
+	headerTop := "From: " + fromName + " <" + from + ">\r\n"
 	if !err && replytoAddr != "" {
-		headerTop += "Reply-to: <" + replytoAddr + ">\n"
+		headerTop += "Reply-to: <" + replytoAddr + ">\r\n"
 	}
 
 	composeText += addAttach(r, q, "1", boundary) +
@@ -427,9 +428,8 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 
 	composeText = strings.Replace(composeText, identity+"\n", headerTop, 1)
 	if(multipart) {
-		composeText += "\n\n--" + boundary + "--"
+		composeText += "\r\n--" + boundary + "--\r\n"
 	}
-	composeText = strings.ReplaceAll(composeText, "\n", "\r\n")
 
 	var toaddrlist, ccaddrlist string
 	fmt.Sscanf(strings.Split(composeText, "To: ")[1], "%s\r\n", &toaddrlist)
@@ -438,21 +438,7 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 		toaddrlist = toaddrlist + "," + ccaddrlist
 	}
 	toaddr := strings.Split(toaddrlist, ",")
-	//er := smtp.SendMail(outId["smtphost"].(string),
-		//smtp.CRAMMD5Auth(outId["smtpuser"].(string), outId["smtppass"].(string)),
-	//	smtp.PlainAuth("",
-	//		outId["smtpuser"].(string),
-	//		outId["smtppass"].(string),
-	//		strings.Split(outId["smtphost"].(string), ":")[0]),
-	//	from,
-	//	toaddr,
-	//	[]byte(composeText))
 	status := Sendmail(outId["smtphost"].(string), outId["smtpuser"].(string), outId["smtppass"].(string), from, toaddr, composeText)
-	/*if er != nil {
-		fmt.Fprint(r, "send failed: ", er)
-	} else {
-		fmt.Fprint(r, "send ok")
-	} */
 	er := ioutil.WriteFile(outId["outfolder"].(string)+separ+boundary, []byte(composeText), 0600)
 	if er != nil {
 		fmt.Fprint(r, status, " - copy failed: ", er)
@@ -465,18 +451,17 @@ func HdlResync(r http.ResponseWriter, q *http.Request) {
 	if !HookAuth(r, q) {
 		return
 	}
-	r.Header().Set("Pragma","no-cache")
-	<-ChanSyncerLoop
-	ChanSyncerLoop <- 1
+	r.Header().Set("Cache-control","no-store")
+	syncer.SyncerMain()
 	fmt.Fprint(r, "ok")
 }
 
 var OutIdentities map[string]interface{}
-var ChanSyncerLoop chan int
+//var ChanSyncerLoop chan int
 
 func main() {
 
-
+	rand.Seed(time.Now().UnixNano())
     //defer profile.Start().Stop()
 	separ = string(filepath.Separator)
 	if os.Getenv("SYNCER") == "1" {
@@ -503,8 +488,7 @@ func main() {
 	SyncerConfig = syncer.ReadConfig()
 
 	SyncerIes = SyncerConfig.ReadIndexEntries()
-	ChanSyncerLoop = make(chan int)
-	go syncer.SyncerLoop(ChanSyncerLoop)
+	go syncer.SyncerMain()
 	http.HandleFunc("/", HdlRes)
 	http.HandleFunc("/cmd", HdlCmd)
 	http.HandleFunc("/read", HdlRead)

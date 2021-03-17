@@ -141,6 +141,7 @@ document.addEventListener("keydown", function(e) {
 		cmdAndNext("archive","Archived");
 	}
 
+/*
 	else if(e.key=="t") {
 		cmdAndNext("todo","Todo");
 	}
@@ -152,7 +153,7 @@ document.addEventListener("keydown", function(e) {
 	else if(e.key=="d") {
 		cmdAndNext("done","Done");
 	}
-
+*/
 	else if(e.key=="G") {
 		if(firstEltId)
 			read(firstEltId);
@@ -163,7 +164,11 @@ document.addEventListener("keydown", function(e) {
 	}
 
 	else if(e.key=="Q") {
-		fetch("/resync");
+		fetch("/resync").then(x=>x.text().then(function() { 
+									document.getElementById("loading").style.display='none';
+									loadmsglist(document.getElementById("query").value);
+		}));
+		document.getElementById("loading").style.display='block';
 	}
 
 	else if(e.key=="Z") {
@@ -213,11 +218,12 @@ document.addEventListener("DOMContentLoaded", function(e) {
 		commandMode=true;
 		updCmdModeIndicator();
 	});
+	/*
 	window.setInterval(function() { 
 									fetch("/resync"); 
 									window.setTimeout(function(){
 												loadmsglist(document.getElementById("query").value);
-												},15*1000); }, 3*60*1000);
+												},15*1000); }, 3*60*1000); */
 
 	if(!document.location.hash) {
 		document.location.hash='#'+encodeURIComponent('inbox');

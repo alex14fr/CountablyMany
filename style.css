@@ -3,6 +3,7 @@ input,textarea{width:100%;font-family:monospace;background-color:#556}
 a,a:visited{color:#d11;text-decoration:none}
 #topbar {    }
 #msglistContainer { background-color:#444455; height: 250px; overflow-y:scroll;overflow-x:hidden;border-bottom:1px solid black }
+#loading { background-color: white; z-index: 3; display: none; position: fixed; bottom:10px; right:10px;}
 #showmsg { height:250px; overflow-y:scroll;overflow-x:hidden ;background-color:#bbc; color:#111}
 .msglistRow:nth-child(even) { background-color: #334; }
 .msglistRow span { display:inline-block; white-space:nowrap; text-overflow:ellipsis; overflow:hidden; color:#4d4;  }
