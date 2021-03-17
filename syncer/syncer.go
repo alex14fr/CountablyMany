@@ -504,7 +504,9 @@ func (imc *IMAPConn) MoveInMailbox(c Config, account string, localmbname string)
 					fmt.Println("error during local rename : ", err)
 					fmt.Println("local index not updated")
 				} else {
-					dbDelete(olduid, account, localmbname)
+				//	dbDelete(olduid, account, localmbname)
+					db.Exec("update messages set u=?, m=? where u=? and m=? and a=?",
+											uid, string(dest), olduid, localmbname, account)
 				}
 			}
 			os.Remove(path + separ + finf.Name())

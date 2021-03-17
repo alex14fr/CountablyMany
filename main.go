@@ -466,12 +466,11 @@ func HdlResync(r http.ResponseWriter, q *http.Request) {
 }
 
 var OutIdentities map[string]interface{}
-//var ChanSyncerLoop chan int
 
 func main() {
 
 	rand.Seed(time.Now().UnixNano())
-    //defer profile.Start().Stop()
+   //defer profile.Start().Stop()
 	separ = string(filepath.Separator)
 	if os.Getenv("SYNCER") == "1" {
 		syncer.SyncerMain()
