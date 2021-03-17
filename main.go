@@ -213,6 +213,7 @@ func HdlReplytemplate(r http.ResponseWriter, q *http.Request) {
 
 	id := q.FormValue("id")
 	fwdMode := (q.FormValue("mode") == "f")
+	fwdMode2 := (q.FormValue("mode") == "f2")
 	file, fname := GetMessageFile(r, q)
 	_ = fname
 	/*	if HandleETag(r, q, ETagF(fname)) {
@@ -225,7 +226,7 @@ func HdlReplytemplate(r http.ResponseWriter, q *http.Request) {
 	}
 	replyto := ""
 	subjectre := ""
-	if !fwdMode {
+	if !fwdMode && !fwdMode2 {
 		replyto = mail.GetHeader("From")
 		if mail.GetHeader("Reply-to") != "" {
 			replyto = mail.GetHeader("Reply-to")
@@ -257,7 +258,7 @@ func HdlReplytemplate(r http.ResponseWriter, q *http.Request) {
 		"To: "+replyto+"\r\n"+
 		"Cc: \r\n"+
 		"Subject: "+subjectre+"\r\n")
-	if !fwdMode {
+	if !fwdMode && !fwdMode2 {
 		fmt.Fprint(r, "In-reply-to: "+mail.GetHeader("Message-ID")+"\r\n")
 	}
 	fmt.Fprint(r, "References: "+mail.GetHeader("Message-ID")+" "+mail.GetHeader("References")+"\r\n"+
@@ -311,6 +312,19 @@ func headerStr(header string, value string) (s string) {
 	} else {
 		return ""
 	}
+}
+
+func addAttachMessage(q *http.Request, boundary string) string {
+	att := q.FormValue("attachMessage")
+	if att == "" {
+		return ""
+	}
+	filc, _ := ioutil.ReadFile(SyncerConfig.Path+separ+att)
+	str := "\r\n--" + boundary + "\r\n" +
+		"Content-disposition: inline; filename=\"forwarded message.eml\"\r\n" +
+		"Content-type: message/rfc822; name=\"forwarded message.eml\"\r\n\r\n"+
+		string(filc)
+	return str
 }
 
 func addAttach(r http.ResponseWriter, q *http.Request, suffix string, boundary string) string {
@@ -387,7 +401,7 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 
 	boundary := "b" + fmt.Sprintf("%x", rand.Uint64())
 	outId := (OutIdentities[identity]).(map[string]interface{})
-	multipart := checkAttach(q,"attach1") || checkAttach(q,"attach2") || checkAttach(q,"attach3") || checkAttach(q,"attach4")
+	multipart := checkAttach(q,"attach1") || checkAttach(q,"attach2") || checkAttach(q,"attach3") || checkAttach(q,"attach4") || q.FormValue("attachMessage")!=""
 	endheaders := "MIME-Version: 1.0\r\n"+
 	"Date: " + time.Now().Format(time.RFC1123Z) + "\r\n" +
 	"Message-ID: <"+fmt.Sprintf("%x",rand.Uint64()) +
@@ -418,7 +432,8 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 	composeText += addAttach(r, q, "1", boundary) +
 		addAttach(r, q, "2", boundary) +
 		addAttach(r, q, "3", boundary) +
-		addAttach(r, q, "4", boundary)
+		addAttach(r, q, "4", boundary) +
+		addAttachMessage(q, boundary)
 
 	composeText = strings.Replace(composeText, identity+"\n", headerTop, 1)
 	if(multipart) {

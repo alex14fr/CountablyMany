@@ -194,6 +194,9 @@ document.addEventListener("keydown", function(e) {
 		window.open('#compose,f:'+curId);
 	}
 
+	else if(e.key=="F") {
+		window.open('#compose,F:'+curId);
+	}
 	e.preventDefault();
 });
 
@@ -266,5 +269,15 @@ function toComposeMode() {
 											document.getElementById('compose').innerHTML=txt;
 										});      });
 	}
+	ii=document.location.hash.indexOf(",F:");
+	if(ii>=0) {
+		var reply2msg=document.location.hash.substr(ii+3,document.location.hash.length);
+		fetch("/replytemplate?mode=f2&id="+reply2msg).then(function(response) {
+										response.text().then(function(txt) {
+											document.getElementById('compose').innerHTML=txt;
+											document.getElementById('attachMessage').value=reply2msg;
+										});      });
+	}
+
 }
 

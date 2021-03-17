@@ -252,6 +252,9 @@ func ListMessagesHTML(path string, prepath string) string {
 				parsed, err = time.Parse("Mon, _2 Jan 2006 15:04:05 -0700 (MST)", ie.D)
 			}
 			if err != nil {
+				parsed, err = time.Parse("Mon, _2 Jan 06 15:04:05 -0700", ie.D)
+			}
+			if err != nil {
 				parsed, err = time.Parse("Mon, _2 Jan 2006 15:04:05 MST", ie.D)
 			}
 			if err != nil {
@@ -541,11 +544,7 @@ func SyncerMain() {
 					fmt.Println("FetchNewInMailbox returning error, stopping right now")
 					return
 				}
-			}
-			for mbox := range conf.Acc[acc].Mailboxes {
 				imapconn.AppendFilesInDir(conf, acc, mbox, conf.Path+separ+acc+separ+mbox+separ+"appends", false, false)
-			}
-			for mbox := range conf.Acc[acc].Mailboxes {
 				imapconn.MoveInMailbox(conf, acc, mbox)
 			}
 		}
