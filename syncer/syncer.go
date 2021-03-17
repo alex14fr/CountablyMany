@@ -17,11 +17,12 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"database/sql"
+	_ "modernc.org/sqlite"
 )
 
 var separ string
-
-var SyncerLog string
+var db (*sql.DB)
 
 type Account struct {
 	Server     string
@@ -134,6 +135,7 @@ type IndexEntry struct {
 	I string // message-id
 }
 
+/*
 type IndexEntries []IndexEntry
 
 func (c Config) ReadIndexEntries() (ies IndexEntries) {
@@ -161,6 +163,8 @@ func (c Config) WriteIndexEntries(ies IndexEntries) {
 		fmt.Println("! index write error: ", err)
 	}
 }
+*/
+
 
 func ReadConfig() Config {
 	separ = string(filepath.Separator)
@@ -172,6 +176,10 @@ func ReadConfig() Config {
 	err = yaml.Unmarshal(confstr, &conf)
 	if err != nil {
 		fmt.Println("! config parse error: ", err)
+	}
+	db, err = sql.Open("sqlite", conf.Path+separ+"Index.sqlite")
+	if err != nil {
+		fmt.Println("! config error unable to open Index.sqlite: ", err)
 	}
 	return conf
 }
@@ -197,21 +205,14 @@ func MakeIEFromFile(filename string) IndexEntry {
 	return ie
 }
 
-func (ies IndexEntries) HasMessageID(mid string, account string, mbox string) bool {
-	for _, ie := range ies {
-		if ie.A == account && ie.M == mbox && ie.I == mid {
-			return true
-		}
-	}
-	return false
+func HasMessageIDmbox(mid string, account string, mbox string) bool {
+	r:=db.QueryRow("select * from messages where i=? and a=? and m=?", mid, account, mbox)
+	return(r.Scan() != sql.ErrNoRows)
 }
-func (ies IndexEntries) searchMessageID(mid string, account string) *IndexEntry {
-	for i, ie := range ies {
-		if ie.A == account && ie.I == mid {
-			return &(ies[i])
-		}
-	}
-	return nil
+
+func HasMessageID(mid string, account string) bool {
+	r:=db.QueryRow("select * from messages where i=? and a=?", mid, account)
+	return(r.Scan() != sql.ErrNoRows)
 }
 
 type htmlLine struct {
@@ -219,7 +220,7 @@ type htmlLine struct {
 	rHtml string
 }
 
-func (ies IndexEntries) ListMessagesHTML(path string, prepath string) string {
+func ListMessagesHTML(path string, prepath string) string {
 	multiboxes := false
 	if strings.Index(path, "*") >= 0 {
 		multiboxes = true
@@ -232,7 +233,19 @@ func (ies IndexEntries) ListMessagesHTML(path string, prepath string) string {
 	locmb := a[1]
 	dateND := time.Now().Format("02/01/06")
 	lines := []htmlLine{}
-	for _, ie := range ies {
+
+	var rows (*sql.Rows)
+
+	if account == "*" {
+		rows,_ = db.Query("select u,a,m,f,s,d,i from messages where m=?", locmb)
+	} else {
+		rows,_ = db.Query("select u,a,m,f,s,d,i from messages where m=? and a=?", locmb, account)
+	}
+
+	var ie IndexEntry
+
+	for rows.Next() {
+		rows.Scan(&ie.U,&ie.A,&ie.M,&ie.F,&ie.S,&ie.D,&ie.I)
 		if (account == "*" || ie.A == account) && (locmb == "*" || ie.M == locmb) {
 			parsed, err := time.Parse("Mon, _2 Jan 2006 15:04:05 -0700", ie.D)
 			if err != nil {
@@ -289,11 +302,19 @@ func getMidFromFile(filename string) string {
 	return env.GetHeader("Message-ID")
 }
 
+func dbDelete(uid uint32, account string, mbox string) {
+	db.Exec("delete from messages where u=? and a=? and m=?",uid,account,mbox)
+}
+
+func dbAppend(ie IndexEntry) {
+	db.Exec("insert into messages (u,a,m,f,s,d,i) values (?,?,?,?,?,?,?)",
+			ie.U,ie.A,ie.M,ie.F,ie.S,ie.D,ie.I)
+}
+
 func (imc *IMAPConn) AppendFile(c Config, accountname string, localmbname string, filename string, allowDup bool, keepOrig bool) error {
 	if !allowDup {
-		ies := c.ReadIndexEntries()
 		mid := getMidFromFile(filename)
-		if mid != "" && ies.HasMessageID(mid, accountname, localmbname) {
+		if mid != "" && HasMessageIDmbox(mid, accountname, localmbname) {
 			err := "AppendFile " + filename + " would duplicate Message-ID " + mid + " in index for " + accountname + "/" + localmbname
 			fmt.Println(err)
 			return errors.New(err)
@@ -306,9 +327,7 @@ func (imc *IMAPConn) AppendFile(c Config, accountname string, localmbname string
 		ie.U = uid
 		ie.A = accountname
 		ie.M = localmbname
-		ies := c.ReadIndexEntries()
-		ies = append(ies, ie)
-		c.WriteIndexEntries(ies)
+		dbAppend(ie)
 		copyfile := c.Path + separ + accountname + separ + localmbname + separ + strconv.Itoa(int(uid))
 		err := os.Link(filename, copyfile)
 		if err != nil {
@@ -340,21 +359,17 @@ func (imc *IMAPConn) AppendFilesInDir(c Config, account string, localmbname stri
 	}
 }
 
-func (ies IndexEntries) GetHighestUID(account string, localmbname string) uint32 {
+func GetHighestUID(account string, localmbname string) uint32 {
 	huid := uint32(0)
-	for _, k := range ies {
-		if k.A == account && k.M == localmbname && k.U > huid {
-			huid = k.U
-		}
-	}
+	r:=db.QueryRow("select MAX(u) from messages where a=? and m=?",account,localmbname)
+	r.Scan(&huid)
 	return huid
 }
 
 func (imc *IMAPConn) FetchNewInMailbox(c Config, account string, localmbname string, fromUid uint32) error {
 	fmt.Println("Fetch new in mailbox ", account, "/", localmbname, "...")
-	ies := c.ReadIndexEntries()
 	if fromUid == 0 {
-		fromUid = ies.GetHighestUID(account, localmbname) + 1
+		fromUid = GetHighestUID(account, localmbname) + 1
 	}
 	fmt.Println("New is from uid ", fromUid)
 	randomtag := "x" + strconv.Itoa(int(rand.Uint64()))
@@ -421,14 +436,11 @@ func (imc *IMAPConn) FetchNewInMailbox(c Config, account string, localmbname str
 				ie.U = uid
 				ie.A = account
 				ie.M = localmbname
-				ies = c.ReadIndexEntries()
-				checkAlready := ies.searchMessageID(ie.I, account)
-				if checkAlready != nil {
-					fmt.Println("was already in index, for mbox=", checkAlready.M, " (foreign move ?)")
+				if HasMessageID(ie.I, ie.A) {
+					fmt.Println("was already in index (foreign move ?)")
 					fmt.Println("keeping both for now")
 				}
-				ies = append(ies, ie)
-				c.WriteIndexEntries(ies)
+				dbAppend(ie)
 			}
 			imc.ReadLine("")
 		}
@@ -462,16 +474,8 @@ func (imc *IMAPConn) MoveInMailbox(c Config, account string, localmbname string)
 				if err != nil {
 					fmt.Println("removing failed : ", err)
 				}
-				ies := c.ReadIndexEntries()
-				for i, ie := range ies {
-					uid2kill, _ := strconv.Atoi(finf.Name())
-					if ie.A == account && ie.M == localmbname && ie.U == uint32(uid2kill) {
-						ies[i] = ies[len(ies)-1]
-						ies = ies[0 : len(ies)-1]
-						break
-					}
-				}
-				c.WriteIndexEntries(ies)
+				uid2kill, _ := strconv.Atoi(finf.Name())
+				dbDelete(uint32(uid2kill), account, localmbname)
 			} else {
 				if c.Acc[account].HasUidmove {
 					imc.WriteLine("x uid move " + finf.Name() + " " + c.Acc[account].Mailboxes[string(dest)])
@@ -491,22 +495,13 @@ func (imc *IMAPConn) MoveInMailbox(c Config, account string, localmbname string)
 					imc.ReadLine("x OK")
 					fmt.Println("killed old")
 				}
-				ies := c.ReadIndexEntries()
-				for i, ie := range ies {
-					if ie.A == account && ie.M == localmbname && ie.U == uint32(olduid) {
-						ies[i].M = string(dest)
-						ies[i].U = uid
-						break
-					}
-				}
-
 				newuids := strconv.Itoa(int(uid))
 				err := os.Rename(c.Path+separ+account+separ+localmbname+separ+finf.Name(), c.Path+separ+account+separ+string(dest)+separ+newuids)
 				if err != nil {
 					fmt.Println("error during local rename : ", err)
 					fmt.Println("local index not updated")
 				} else {
-					c.WriteIndexEntries(ies)
+					dbDelete(olduid, account, localmbname)
 				}
 			}
 			os.Remove(path + separ + finf.Name())

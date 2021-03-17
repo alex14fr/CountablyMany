@@ -54,7 +54,6 @@ func HdlRes(r http.ResponseWriter, q *http.Request) {
 }
 
 var SyncerConfig syncer.Config
-var SyncerIes syncer.IndexEntries
 
 func HdlCmd(r http.ResponseWriter, q *http.Request) {
 	if !HookAuth(r, q) {
@@ -80,8 +79,7 @@ func HdlCmd(r http.ResponseWriter, q *http.Request) {
 		query = "*/" + query
 	}
 
-	SyncerIes = SyncerConfig.ReadIndexEntries()
-	outstr := SyncerIes.ListMessagesHTML(query, SyncerConfig.Path)
+	outstr := syncer.ListMessagesHTML(query, SyncerConfig.Path)
 
 	if HandleETag(r, q, ETagS(outstr)) {
 		return
@@ -106,7 +104,6 @@ func HdlSource(r http.ResponseWriter, q *http.Request) {
 		return
 	}
 
-	SyncerIes = SyncerConfig.ReadIndexEntries()
 	r.Header().Set("Content-Type", "text/plain")
 	_, fname := GetMessageFile(r, q)
 	http.ServeFile(r, q, fname)
@@ -156,7 +153,6 @@ func HdlRead(r http.ResponseWriter, q *http.Request) {
 		return
 	}
 
-	SyncerIes = SyncerConfig.ReadIndexEntries()
 	id := q.FormValue("id")
 	file, fname := GetMessageFile(r, q)
 	//fmt.Println("hdlread ",file,fname)
@@ -215,7 +211,6 @@ func HdlReplytemplate(r http.ResponseWriter, q *http.Request) {
 		return
 	}
 
-	SyncerIes = SyncerConfig.ReadIndexEntries()
 	id := q.FormValue("id")
 	fwdMode := (q.FormValue("mode") == "f")
 	file, fname := GetMessageFile(r, q)
@@ -284,7 +279,6 @@ func HdlAttachGet(r http.ResponseWriter, q *http.Request) {
 		return
 	}
 
-	SyncerIes = SyncerConfig.ReadIndexEntries()
 	cid := q.FormValue("cid")
 	mode := q.FormValue("mode")
 	file, fname := GetMessageFile(r, q)
@@ -487,7 +481,6 @@ func main() {
 
 	SyncerConfig = syncer.ReadConfig()
 
-	SyncerIes = SyncerConfig.ReadIndexEntries()
 	go syncer.SyncerMain()
 	http.HandleFunc("/", HdlRes)
 	http.HandleFunc("/cmd", HdlCmd)
