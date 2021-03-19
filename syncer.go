@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"crypto/tls"
+	"database/sql"
 	"errors"
 	"fmt"
 	"github.com/jhillyerd/enmime"
@@ -11,15 +12,14 @@ import (
 	"io"
 	"io/ioutil"
 	"math/rand"
+	_ "modernc.org/sqlite"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
-	"time"
-	"database/sql"
-	_ "modernc.org/sqlite"
 	"sync"
+	"time"
 )
 
 var dont_touch_inbox bool
@@ -163,11 +163,11 @@ func MakeIEFromFile(filename string) IndexEntry {
 	env, err := enmime.ReadEnvelope(fil)
 	if err != nil {
 		fmt.Println("! error reading envelope for ", fil)
-		ie.F="unknown <u@u.tld>";
-		ie.S="unknown subject";
-		ie.D="0";
-		ie.I="unknown.message-id@nonexistent.tld";
-		return ie;
+		ie.F = "unknown <u@u.tld>"
+		ie.S = "unknown subject"
+		ie.D = "0"
+		ie.I = "unknown.message-id@nonexistent.tld"
+		return ie
 	}
 	//fmt.Println(filename)
 
@@ -179,13 +179,13 @@ func MakeIEFromFile(filename string) IndexEntry {
 }
 
 func HasMessageIDmbox(mid string, account string, mbox string) bool {
-	r:=db.QueryRow("select * from messages where i=? and a=? and m=?", mid, account, mbox)
-	return(r.Scan() != sql.ErrNoRows)
+	r := db.QueryRow("select * from messages where i=? and a=? and m=?", mid, account, mbox)
+	return (r.Scan() != sql.ErrNoRows)
 }
 
 func HasMessageID(mid string, account string) bool {
-	r:=db.QueryRow("select * from messages where i=? and a=?", mid, account)
-	return(r.Scan() != sql.ErrNoRows)
+	r := db.QueryRow("select * from messages where i=? and a=?", mid, account)
+	return (r.Scan() != sql.ErrNoRows)
 }
 
 type htmlLine struct {
@@ -210,15 +210,15 @@ func ListMessagesHTML(path string, prepath string) string {
 	var rows (*sql.Rows)
 
 	if account == "*" {
-		rows,_ = db.Query("select u,a,m,f,s,d,i from messages where m=?", locmb)
+		rows, _ = db.Query("select u,a,m,f,s,d,i from messages where m=?", locmb)
 	} else {
-		rows,_ = db.Query("select u,a,m,f,s,d,i from messages where m=? and a=?", locmb, account)
+		rows, _ = db.Query("select u,a,m,f,s,d,i from messages where m=? and a=?", locmb, account)
 	}
 
 	var ie IndexEntry
 
 	for rows.Next() {
-		rows.Scan(&ie.U,&ie.A,&ie.M,&ie.F,&ie.S,&ie.D,&ie.I)
+		rows.Scan(&ie.U, &ie.A, &ie.M, &ie.F, &ie.S, &ie.D, &ie.I)
 		if (account == "*" || ie.A == account) && (locmb == "*" || ie.M == locmb) {
 			parsed, err := time.Parse("Mon, _2 Jan 2006 15:04:05 -0700", ie.D)
 			if err != nil {
@@ -242,7 +242,7 @@ func ListMessagesHTML(path string, prepath string) string {
 			from = strings.ReplaceAll(from, "\"", "")
 			from = strings.ReplaceAll(from, "  ", " ")
 			fromsplit := strings.Split(from, "<")
-			if fromsplit[0] != "" || len(fromsplit)<2 {
+			if fromsplit[0] != "" || len(fromsplit) < 2 {
 				from = fromsplit[0]
 			} else {
 				from = fromsplit[1]
@@ -279,12 +279,12 @@ func getMidFromFile(filename string) string {
 }
 
 func dbDelete(uid uint32, account string, mbox string) {
-	db.Exec("delete from messages where u=? and a=? and m=?",uid,account,mbox)
+	db.Exec("delete from messages where u=? and a=? and m=?", uid, account, mbox)
 }
 
 func dbAppend(ie IndexEntry) {
 	db.Exec("insert into messages (u,a,m,f,s,d,i) values (?,?,?,?,?,?,?)",
-			ie.U,ie.A,ie.M,ie.F,ie.S,ie.D,ie.I)
+		ie.U, ie.A, ie.M, ie.F, ie.S, ie.D, ie.I)
 }
 
 func (imc *IMAPConn) AppendFile(c Config, accountname string, localmbname string, filename string, allowDup bool, keepOrig bool) error {
@@ -337,7 +337,7 @@ func (imc *IMAPConn) AppendFilesInDir(c Config, account string, localmbname stri
 
 func GetHighestUID(account string, localmbname string) uint32 {
 	huid := uint32(0)
-	r:=db.QueryRow("select MAX(u) from messages where a=? and m=?",account,localmbname)
+	r := db.QueryRow("select MAX(u) from messages where a=? and m=?", account, localmbname)
 	r.Scan(&huid)
 	return huid
 }
@@ -417,8 +417,8 @@ func (imc *IMAPConn) FetchNewInMailbox(c Config, account string, localmbname str
 					fmt.Println("keeping both for now")
 				}
 				dbAppend(ie)
-				if localmbname=="inbox" && dont_touch_inbox {
-					idlerChan<-true
+				if localmbname == "inbox" && dont_touch_inbox {
+					idlerChan <- true
 				}
 			}
 			imc.ReadLine("")
@@ -429,20 +429,20 @@ func (imc *IMAPConn) FetchNewInMailbox(c Config, account string, localmbname str
 }
 
 func (imc *IMAPConn) BlockIdle(c Config, account string, mbox string) (err error) {
-	imc.WriteLine("x examine "+mbox)
+	imc.WriteLine("x examine " + mbox)
 	imc.ReadLine("x ")
 	imc.WriteLine("x idle")
 	imc.ReadLine("+ ")
-	finished:=false
+	finished := false
 	for !finished {
-		s,err:=imc.ReadLine("* ")
-		finished=(err!=nil)||strings.Contains(s,"EXIST")
+		s, err := imc.ReadLine("* ")
+		finished = (err != nil) || strings.Contains(s, "EXIST")
 	}
-	if err!=nil {
+	if err != nil {
 		return
 	}
 	imc.WriteLine("DONE")
-	_,err=imc.ReadLine("x OK")
+	_, err = imc.ReadLine("x OK")
 	return
 }
 
@@ -498,9 +498,9 @@ func (imc *IMAPConn) MoveInMailbox(c Config, account string, localmbname string)
 					fmt.Println("error during local rename : ", err)
 					fmt.Println("local index not updated")
 				} else {
-				//	dbDelete(olduid, account, localmbname)
+					//	dbDelete(olduid, account, localmbname)
 					db.Exec("update messages set u=?, m=? where u=? and m=? and a=?",
-											uid, string(dest), olduid, localmbname, account)
+						uid, string(dest), olduid, localmbname, account)
 				}
 			}
 			os.Remove(path + separ + finf.Name())
@@ -531,9 +531,9 @@ func startIMAPLoop(conf Config, acc string, wg *sync.WaitGroup) {
 		fmt.Println("login error, skipping account ", acc)
 	} else {
 		for mbox := range conf.Acc[acc].Mailboxes {
-			if !dont_touch_inbox || mbox!="inbox" {
+			if !dont_touch_inbox || mbox != "inbox" {
 				imapconn.FetchNewInMailbox(conf, acc, mbox, 0)
-			} 
+			}
 			imapconn.AppendFilesInDir(conf, acc, mbox, conf.Path+separ+acc+separ+mbox+separ+"appends", false, false)
 			imapconn.MoveInMailbox(conf, acc, mbox)
 		}
@@ -541,26 +541,25 @@ func startIMAPLoop(conf Config, acc string, wg *sync.WaitGroup) {
 	wg.Done()
 }
 
-
 func IdlerAll(conf Config) {
-	dont_touch_inbox=true
+	dont_touch_inbox = true
 	idlerChan = make(chan bool)
 	for acc := range conf.Acc {
 		go func(acc string) {
 			imapconn, err := Login(conf.Acc[acc])
 			if err != nil {
-				fmt.Println("*** idler first login error, stopping idling for ",acc," ***")
+				fmt.Println("*** idler first login error, stopping idling for ", acc, " ***")
 				return
 			}
 			for {
-				err=imapconn.BlockIdle(conf,acc,"inbox")
-				if err==nil {
+				err = imapconn.BlockIdle(conf, acc, "inbox")
+				if err == nil {
 					imapconn.FetchNewInMailbox(conf, acc, "inbox", 0)
 				} else {
-					fmt.Println("*** idler for ",acc," relogin...")
+					fmt.Println("*** idler for ", acc, " relogin...")
 					imapconn, err = Login(conf.Acc[acc])
 					if err != nil {
-						fmt.Println("*** idler relogin error, stopping idling for ",acc," ***")
+						fmt.Println("*** idler relogin error, stopping idling for ", acc, " ***")
 						break
 					}
 				}
@@ -573,12 +572,11 @@ func WaitOneIdler() {
 	<-idlerChan
 }
 
-
 func SyncerMain() {
 	if dont_touch_other {
 		return
 	}
-	dont_touch_other=true
+	dont_touch_other = true
 	separ = string(filepath.Separator)
 	SyncerMkdirs()
 	fmt.Println("SyncerMain starting at ", time.Now().Format(time.ANSIC))
@@ -593,7 +591,6 @@ func SyncerMain() {
 		fmt.Println("SyncerMain : Starting idlers")
 		IdlerAll(conf)
 	}
-	dont_touch_other=false
+	dont_touch_other = false
 	fmt.Println("SyncerMain stopping at ", time.Now().Format(time.ANSIC))
 }
-

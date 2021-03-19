@@ -2,18 +2,18 @@ package main
 
 import (
 	"bufio"
+	"crypto/sha256"
+	"crypto/tls"
 	"encoding/base64"
 	"fmt"
 	"github.com/jhillyerd/enmime"
 	"github.com/spf13/viper"
-	"crypto/sha256"
 	"hash/crc64"
 	"html"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
 	_ "net/mail"
-	"crypto/tls"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -59,7 +59,7 @@ func HdlCmd(r http.ResponseWriter, q *http.Request) {
 	}
 	query := q.FormValue("q")
 
-	r.Header().Set("Cache-control","no-store")
+	r.Header().Set("Cache-control", "no-store")
 
 	querys := strings.Split(query, "##")
 	if len(querys) > 1 {
@@ -136,14 +136,14 @@ func ETagS(str string) string {
 
 func HandleETag(r http.ResponseWriter, q *http.Request, etag string) bool {
 	return false
-/*
-	r.Header().Set("ETag", etag)
-	if q.Header.Get("If-None-Match") == etag {
-		r.WriteHeader(304)
-		return true
-	}
-	return false
-*/
+	/*
+		r.Header().Set("ETag", etag)
+		if q.Header.Get("If-None-Match") == etag {
+			r.WriteHeader(304)
+			return true
+		}
+		return false
+	*/
 }
 
 func HdlRead(r http.ResponseWriter, q *http.Request) {
@@ -189,7 +189,7 @@ func HdlRead(r http.ResponseWriter, q *http.Request) {
 func extractAddr(in string) string {
 	var addrs []string
 	var ss string
-	insplt := strings.Split(in + ",", ",")
+	insplt := strings.Split(in+",", ",")
 	for _, nm := range insplt {
 		if strings.Index(nm, "<") >= 0 {
 			ss = strings.Split(nm, "<")[1]
@@ -317,10 +317,10 @@ func addAttachMessage(q *http.Request, boundary string) string {
 	if att == "" {
 		return ""
 	}
-	filc, _ := ioutil.ReadFile(SyncerConfig.Path+separ+att)
+	filc, _ := ioutil.ReadFile(SyncerConfig.Path + separ + att)
 	str := "\r\n--" + boundary + "\r\n" +
 		"Content-disposition: inline; filename=\"forwarded message.eml\"\r\n" +
-		"Content-type: message/rfc822; name=\"forwarded message.eml\"\r\n\r\n"+
+		"Content-type: message/rfc822; name=\"forwarded message.eml\"\r\n\r\n" +
 		string(filc)
 	return str
 }
@@ -333,12 +333,12 @@ func addAttach(r http.ResponseWriter, q *http.Request, suffix string, boundary s
 	d, _ := ioutil.ReadAll(mpf)
 	return "\r\n--" + boundary + "\r\n" +
 		"Content-Disposition: attachment; filename=\"" + mpfh.Filename + "\"\r\n" +
-		"Content-Type: " + mpfh.Header.Get("Content-Type") + "; name=\"" + mpfh.Filename+"\"\r\n" +
+		"Content-Type: " + mpfh.Header.Get("Content-Type") + "; name=\"" + mpfh.Filename + "\"\r\n" +
 		"Content-Transfer-Encoding: base64\r\n\r\n" +
 		base64.StdEncoding.EncodeToString(d)
 }
 
-func readStr(rw *bufio.ReadWriter) (string) {
+func readStr(rw *bufio.ReadWriter) string {
 	rw.Flush()
 	retstr := ""
 	nok := true
@@ -347,40 +347,47 @@ func readStr(rw *bufio.ReadWriter) (string) {
 		if err != nil {
 			fmt.Print("readStr error : ")
 			fmt.Print(err)
-			return "error" 
+			return "error"
 		}
-		fmt.Print("readStr : "+l)
-		retstr+=l
-		nok = rw.Reader.Buffered()>0
+		fmt.Print("readStr : " + l)
+		retstr += l
+		nok = rw.Reader.Buffered() > 0
 	}
 	return retstr
 }
 
 func checkAttach(q *http.Request, v string) bool {
-	_,mpfh,_:=q.FormFile(v)
-	fmt.Print("checkAttach of ", v, " : ", mpfh!=nil)
-	return mpfh!=nil
+	_, mpfh, _ := q.FormFile(v)
+	fmt.Print("checkAttach of ", v, " : ", mpfh != nil)
+	return mpfh != nil
 }
 
-func Sendmail(host string, user string, pass string, from string, to []string, data string) (string) {
+func Sendmail(host string, user string, pass string, from string, to []string, data string) string {
 	conn, err := tls.Dial("tcp", host, &tls.Config{})
-	if err != nil { 
+	if err != nil {
 		fmt.Print(err)
 		return "dial error"
 	}
 	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 	readStr(rw)
-	rw.WriteString("ehlo localhost\r\n"); readStr(rw)
-	rw.WriteString("auth login\r\n"); readStr(rw)
-	rw.WriteString(base64.StdEncoding.EncodeToString([]byte(user))+"\r\n"); readStr(rw)
-	rw.WriteString(base64.StdEncoding.EncodeToString([]byte(pass))+"\r\n"); readStr(rw)
-	rw.WriteString("mail from: <"+from+">\r\n"); readStr(rw)
+	rw.WriteString("ehlo localhost\r\n")
+	readStr(rw)
+	rw.WriteString("auth login\r\n")
+	readStr(rw)
+	rw.WriteString(base64.StdEncoding.EncodeToString([]byte(user)) + "\r\n")
+	readStr(rw)
+	rw.WriteString(base64.StdEncoding.EncodeToString([]byte(pass)) + "\r\n")
+	readStr(rw)
+	rw.WriteString("mail from: <" + from + ">\r\n")
+	readStr(rw)
 	for _, toaddr := range to {
-		rw.WriteString("rcpt to: <"+toaddr+">\r\n"); readStr(rw)
+		rw.WriteString("rcpt to: <" + toaddr + ">\r\n")
+		readStr(rw)
 	}
-	rw.WriteString("data\r\n"); readStr(rw)
-	rw.WriteString(data); 
-	rw.WriteString("\r\n.\r\n"); 
+	rw.WriteString("data\r\n")
+	readStr(rw)
+	rw.WriteString(data)
+	rw.WriteString("\r\n.\r\n")
 	retstr := readStr(rw)
 	conn.Close()
 	return retstr
@@ -399,23 +406,23 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 
 	boundary := "b" + fmt.Sprintf("%x", rand.Uint64())
 	outId := (OutIdentities[identity]).(map[string]interface{})
-	multipart := checkAttach(q,"attach1") || checkAttach(q,"attach2") || checkAttach(q,"attach3") || checkAttach(q,"attach4") || q.FormValue("attachMessage")!=""
-	endheaders := "MIME-Version: 1.0\r\n"+
-	"Date: " + time.Now().Format(time.RFC1123Z) + "\r\n" +
-	"Message-ID: <"+fmt.Sprintf("%x",rand.Uint64()) +
-						fmt.Sprintf("%x",sha256.Sum256([]byte(composeText))) +
-						fmt.Sprintf("%x",rand.Uint64()) +
-						"@"+strings.Split(outId["fromaddr"].(string),"@")[1]+">\r\n" +
+	multipart := checkAttach(q, "attach1") || checkAttach(q, "attach2") || checkAttach(q, "attach3") || checkAttach(q, "attach4") || q.FormValue("attachMessage") != ""
+	endheaders := "MIME-Version: 1.0\r\n" +
+		"Date: " + time.Now().Format(time.RFC1123Z) + "\r\n" +
+		"Message-ID: <" + fmt.Sprintf("%x", rand.Uint64()) +
+		fmt.Sprintf("%x", sha256.Sum256([]byte(composeText))) +
+		fmt.Sprintf("%x", rand.Uint64()) +
+		"@" + strings.Split(outId["fromaddr"].(string), "@")[1] + ">\r\n" +
 		"Content-Transfer-Encoding: 8bit\r\n" +
-		"Content-Type: ";
-	if(multipart) {
-		endheaders+="multipart/mixed; boundary=\"" + boundary + "\"\r\n\r\n" +
-						"This is a multipart message in MIME format. \r\n\r\n" +
-						"--" + boundary + "\r\n" +
-						"Content-Type: text/plain; charset=\"utf8\"\r\n" +
-						"Content-Transfer-Encoding: 8bit\r\n"
+		"Content-Type: "
+	if multipart {
+		endheaders += "multipart/mixed; boundary=\"" + boundary + "\"\r\n\r\n" +
+			"This is a multipart message in MIME format. \r\n\r\n" +
+			"--" + boundary + "\r\n" +
+			"Content-Type: text/plain; charset=\"utf8\"\r\n" +
+			"Content-Transfer-Encoding: 8bit\r\n"
 	} else {
-		endheaders+="text/plain; charset=\"utf8\"\r\n"
+		endheaders += "text/plain; charset=\"utf8\"\r\n"
 	}
 
 	composeText = strings.Replace(composeText, "@endheaders", endheaders, 1)
@@ -434,7 +441,7 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 		addAttachMessage(q, boundary)
 
 	composeText = strings.Replace(composeText, identity+"\n", headerTop, 1)
-	if(multipart) {
+	if multipart {
 		composeText += "\r\n--" + boundary + "--\r\n"
 	}
 
@@ -458,7 +465,7 @@ func HdlResync(r http.ResponseWriter, q *http.Request) {
 	if !HookAuth(r, q) {
 		return
 	}
-	r.Header().Set("Cache-control","no-store")
+	r.Header().Set("Cache-control", "no-store")
 	SyncerMain()
 	fmt.Fprint(r, "ok")
 }
@@ -467,8 +474,8 @@ func HdlIdler(r http.ResponseWriter, q *http.Request) {
 	if !HookAuth(r, q) {
 		return
 	}
-	r.Header().Set("Content-type","text/event-stream")
-	r.Header().Set("Cache-control","no-store")
+	r.Header().Set("Content-type", "text/event-stream")
+	r.Header().Set("Cache-control", "no-store")
 	WaitOneIdler()
 	fmt.Fprint(r, "data: ok\r\n\r\n")
 }
@@ -478,7 +485,7 @@ var OutIdentities map[string]interface{}
 func main() {
 
 	rand.Seed(time.Now().UnixNano())
-   //defer profile.Start().Stop()
+	//defer profile.Start().Stop()
 	separ = string(filepath.Separator)
 	if os.Getenv("SYNCER") == "1" {
 		SyncerMain()
@@ -487,8 +494,8 @@ func main() {
 
 	viper.SetDefault("ListenAddr", "127.0.0.1:1336")
 	/*
-	viper.SetDefault("TLSCert", "cert.pem")
-	viper.SetDefault("TLSKey", "key.pem")
+		viper.SetDefault("TLSCert", "cert.pem")
+		viper.SetDefault("TLSKey", "key.pem")
 	*/
 	viper.SetDefault("LoginHash", "Y2hhbmdlOnRoaXM=") //change:this
 	viper.SetDefault("MaxMessages", 30000)
@@ -513,13 +520,13 @@ func main() {
 	http.HandleFunc("/source", HdlSource)
 	http.HandleFunc("/resync", HdlResync)
 	http.HandleFunc("/idler", HdlIdler)
-	var err error;
+	var err error
 	if viper.GetString("TLSCert") != "" && viper.GetString("TLSKey") != "" {
-		err=http.ListenAndServeTLS(viper.GetString("ListenAddr"), viper.GetString("TLSCert"), viper.GetString("TLSKey"), nil)
+		err = http.ListenAndServeTLS(viper.GetString("ListenAddr"), viper.GetString("TLSCert"), viper.GetString("TLSKey"), nil)
 	} else {
-		err=http.ListenAndServe(viper.GetString("ListenAddr"), nil)
+		err = http.ListenAndServe(viper.GetString("ListenAddr"), nil)
 	}
-	if err!=nil {
+	if err != nil {
 		fmt.Println(err)
 	}
 }
