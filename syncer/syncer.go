@@ -418,6 +418,9 @@ func (imc *IMAPConn) FetchNewInMailbox(c Config, account string, localmbname str
 					fmt.Println("keeping both for now")
 				}
 				dbAppend(ie)
+				if localmbname=="inbox" && dont_touch_inbox {
+					idlerChan<-true
+				}
 			}
 			imc.ReadLine("")
 		}
@@ -426,14 +429,22 @@ func (imc *IMAPConn) FetchNewInMailbox(c Config, account string, localmbname str
 	return nil
 }
 
-func (imc *IMAPConn) BlockIdle(c Config, account string, mbox string) {
-	imc.WriteLine("x select "+mbox)
+func (imc *IMAPConn) BlockIdle(c Config, account string, mbox string) (err error) {
+	imc.WriteLine("x examine "+mbox)
 	imc.ReadLine("x ")
 	imc.WriteLine("x idle")
 	imc.ReadLine("+ ")
-	imc.ReadLine("* ")
+	finished:=false
+	for !finished {
+		s,err:=imc.ReadLine("* ")
+		finished=(err!=nil)||strings.Contains(s,"EXIST")
+	}
+	if err!=nil {
+		return
+	}
 	imc.WriteLine("DONE")
-	imc.ReadLine("x OK")
+	_,err=imc.ReadLine("x OK")
+	return
 }
 
 func (imc *IMAPConn) MoveInMailbox(c Config, account string, localmbname string) error {
@@ -522,13 +533,10 @@ func startIMAPLoop(conf Config, acc string, wg *sync.WaitGroup) {
 	} else {
 		for mbox := range conf.Acc[acc].Mailboxes {
 			if !dont_touch_inbox || mbox!="inbox" {
-				if imapconn.FetchNewInMailbox(conf, acc, mbox, 0) != nil {
-					fmt.Println("FetchNewInMailbox returning error, stopping right now")
-				} else {
-					imapconn.AppendFilesInDir(conf, acc, mbox, conf.Path+separ+acc+separ+mbox+separ+"appends", false, false)
-					imapconn.MoveInMailbox(conf, acc, mbox)
-				}
-			}
+				imapconn.FetchNewInMailbox(conf, acc, mbox, 0)
+			} 
+			imapconn.AppendFilesInDir(conf, acc, mbox, conf.Path+separ+acc+separ+mbox+separ+"appends", false, false)
+			imapconn.MoveInMailbox(conf, acc, mbox)
 		}
 	}
 	wg.Done()
@@ -540,10 +548,24 @@ func IdlerAll(conf Config) {
 	idlerChan = make(chan bool)
 	for acc := range conf.Acc {
 		go func(acc string) {
-			imapconn, _ := Login(conf.Acc[acc])
-			imapconn.BlockIdle(conf, acc, "inbox")
-			imapconn.FetchNewInMailbox(conf, acc, "inbox", 0)
-			idlerChan<-true
+			imapconn, err := Login(conf.Acc[acc])
+			if err != nil {
+				fmt.Println("*** idler first login error, stopping idling for ",acc," ***")
+				return
+			}
+			for {
+				err=imapconn.BlockIdle(conf,acc,"inbox")
+				if err==nil {
+					imapconn.FetchNewInMailbox(conf, acc, "inbox", 0)
+				} else {
+					fmt.Println("*** idler for ",acc," relogin...")
+					imapconn, err = Login(conf.Acc[acc])
+					if err != nil {
+						fmt.Println("*** idler relogin error, stopping idling for ",acc," ***")
+						break
+					}
+				}
+			}
 		}(acc)
 	}
 }
