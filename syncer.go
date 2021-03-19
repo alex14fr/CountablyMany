@@ -26,7 +26,6 @@ var dont_touch_inbox bool
 var dont_touch_other bool
 var idlerChan (chan bool)
 
-var separ string
 var db (*sql.DB)
 
 type Account struct {

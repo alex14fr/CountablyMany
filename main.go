@@ -51,7 +51,7 @@ func HdlRes(r http.ResponseWriter, q *http.Request) {
 	}
 }
 
-var SyncerConfig syncer.Config
+var SyncerConfig Config
 
 func HdlCmd(r http.ResponseWriter, q *http.Request) {
 	if !HookAuth(r, q) {
@@ -77,7 +77,7 @@ func HdlCmd(r http.ResponseWriter, q *http.Request) {
 		query = "*/" + query
 	}
 
-	outstr := syncer.ListMessagesHTML(query, SyncerConfig.Path)
+	outstr := ListMessagesHTML(query, SyncerConfig.Path)
 
 	if HandleETag(r, q, ETagS(outstr)) {
 		return
@@ -459,7 +459,7 @@ func HdlResync(r http.ResponseWriter, q *http.Request) {
 		return
 	}
 	r.Header().Set("Cache-control","no-store")
-	syncer.SyncerMain()
+	SyncerMain()
 	fmt.Fprint(r, "ok")
 }
 
@@ -469,7 +469,7 @@ func HdlIdler(r http.ResponseWriter, q *http.Request) {
 	}
 	r.Header().Set("Content-type","text/event-stream")
 	r.Header().Set("Cache-control","no-store")
-	syncer.WaitOneIdler()
+	WaitOneIdler()
 	fmt.Fprint(r, "data: ok\r\n\r\n")
 }
 
@@ -481,7 +481,7 @@ func main() {
    //defer profile.Start().Stop()
 	separ = string(filepath.Separator)
 	if os.Getenv("SYNCER") == "1" {
-		syncer.SyncerMain()
+		SyncerMain()
 		return
 	}
 
@@ -501,9 +501,9 @@ func main() {
 
 	OutIdentities = viper.GetStringMap("OutIdentities")
 
-	SyncerConfig = syncer.ReadConfig()
+	SyncerConfig = ReadConfig()
 
-	go syncer.SyncerMain()
+	go SyncerMain()
 	http.HandleFunc("/", HdlRes)
 	http.HandleFunc("/cmd", HdlCmd)
 	http.HandleFunc("/read", HdlRead)
