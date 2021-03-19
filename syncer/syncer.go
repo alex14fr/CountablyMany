@@ -22,7 +22,9 @@ import (
 	"sync"
 )
 
-var sync_in_progress bool
+var dont_touch_inbox bool
+var dont_touch_other bool
+var idlerChan (chan bool)
 
 var separ string
 var db (*sql.DB)
@@ -137,37 +139,6 @@ type IndexEntry struct {
 	D string // date
 	I string // message-id
 }
-
-/*
-type IndexEntries []IndexEntry
-
-func (c Config) ReadIndexEntries() (ies IndexEntries) {
-	ies = IndexEntries{}
-	istr, err := ioutil.ReadFile(c.Path + separ + "Index.yaml")
-	if err != nil {
-		fmt.Println("! index read error: ", err)
-		return
-	}
-	err = yaml.Unmarshal(istr, &ies)
-	if err != nil {
-		fmt.Println("! index parse error: ", err)
-	}
-	return
-}
-
-func (c Config) WriteIndexEntries(ies IndexEntries) {
-	istr, err := yaml.Marshal(&ies)
-	if err != nil {
-		fmt.Println("! index marshal error: ", err)
-		return
-	}
-	err = ioutil.WriteFile(c.Path+separ+"Index.yaml", istr, 0600)
-	if err != nil {
-		fmt.Println("! index write error: ", err)
-	}
-}
-*/
-
 
 func ReadConfig() Config {
 	separ = string(filepath.Separator)
@@ -455,6 +426,16 @@ func (imc *IMAPConn) FetchNewInMailbox(c Config, account string, localmbname str
 	return nil
 }
 
+func (imc *IMAPConn) BlockIdle(c Config, account string, mbox string) {
+	imc.WriteLine("x select "+mbox)
+	imc.ReadLine("x ")
+	imc.WriteLine("x idle")
+	imc.ReadLine("+ ")
+	imc.ReadLine("* ")
+	imc.WriteLine("DONE")
+	imc.ReadLine("x OK")
+}
+
 func (imc *IMAPConn) MoveInMailbox(c Config, account string, localmbname string) error {
 	path := c.Path + separ + account + separ + localmbname + separ + "moves"
 	fmt.Println("performing moves in ", path, "...")
@@ -540,22 +521,43 @@ func startIMAPLoop(conf Config, acc string, wg *sync.WaitGroup) {
 		fmt.Println("login error, skipping account ", acc)
 	} else {
 		for mbox := range conf.Acc[acc].Mailboxes {
-			if imapconn.FetchNewInMailbox(conf, acc, mbox, 0) != nil {
-				fmt.Println("FetchNewInMailbox returning error, stopping right now")
-			} else {
-				imapconn.AppendFilesInDir(conf, acc, mbox, conf.Path+separ+acc+separ+mbox+separ+"appends", false, false)
-				imapconn.MoveInMailbox(conf, acc, mbox)
+			if !dont_touch_inbox || mbox!="inbox" {
+				if imapconn.FetchNewInMailbox(conf, acc, mbox, 0) != nil {
+					fmt.Println("FetchNewInMailbox returning error, stopping right now")
+				} else {
+					imapconn.AppendFilesInDir(conf, acc, mbox, conf.Path+separ+acc+separ+mbox+separ+"appends", false, false)
+					imapconn.MoveInMailbox(conf, acc, mbox)
+				}
 			}
 		}
 	}
 	wg.Done()
 }
 
+
+func IdlerAll(conf Config) {
+	dont_touch_inbox=true
+	idlerChan = make(chan bool)
+	for acc := range conf.Acc {
+		go func(acc string) {
+			imapconn, _ := Login(conf.Acc[acc])
+			imapconn.BlockIdle(conf, acc, "inbox")
+			imapconn.FetchNewInMailbox(conf, acc, "inbox", 0)
+			idlerChan<-true
+		}(acc)
+	}
+}
+
+func WaitOneIdler() {
+	<-idlerChan
+}
+
+
 func SyncerMain() {
-	if sync_in_progress {
+	if dont_touch_other {
 		return
 	}
-	sync_in_progress=true
+	dont_touch_other=true
 	separ = string(filepath.Separator)
 	SyncerMkdirs()
 	fmt.Println("SyncerMain starting at ", time.Now().Format(time.ANSIC))
@@ -566,7 +568,11 @@ func SyncerMain() {
 		go startIMAPLoop(conf, acc, &wg)
 	}
 	wg.Wait()
+	if !dont_touch_inbox {
+		fmt.Println("SyncerMain : Starting idlers")
+		IdlerAll(conf)
+	}
+	dont_touch_other=false
 	fmt.Println("SyncerMain stopping at ", time.Now().Format(time.ANSIC))
-	sync_in_progress=false
 }
 

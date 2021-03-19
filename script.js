@@ -227,6 +227,11 @@ document.addEventListener("DOMContentLoaded", function(e) {
 									window.setTimeout(function(){
 												loadmsglist(document.getElementById("query").value);
 												},15*1000); }, 3*60*1000); */
+	/*fetch("/idler").then(r=>r.text().then(function() {
+		loadmsglist(document.getElementById("query").value); }));*/
+
+	var evtSrc=new EventSource("/idler",{withCredentials:true});
+	evtSrc.onmessage=() => loadmsglist(document.getElementById("query").value);
 
 	if(!document.location.hash) {
 		document.location.hash='#'+encodeURIComponent('inbox');

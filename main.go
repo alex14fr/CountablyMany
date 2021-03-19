@@ -465,6 +465,16 @@ func HdlResync(r http.ResponseWriter, q *http.Request) {
 	fmt.Fprint(r, "ok")
 }
 
+func HdlIdler(r http.ResponseWriter, q *http.Request) {
+	if !HookAuth(r, q) {
+		return
+	}
+	r.Header().Set("Content-type","text/event-stream")
+	r.Header().Set("Cache-control","no-store")
+	syncer.WaitOneIdler()
+	fmt.Fprint(r, "data: ok\r\n\r\n")
+}
+
 var OutIdentities map[string]interface{}
 
 func main() {
@@ -504,6 +514,7 @@ func main() {
 	http.HandleFunc("/send", HdlSend)
 	http.HandleFunc("/source", HdlSource)
 	http.HandleFunc("/resync", HdlResync)
+	http.HandleFunc("/idler", HdlIdler)
 	var err error;
 	if viper.GetString("TLSCert") != "" && viper.GetString("TLSKey") != "" {
 		err=http.ListenAndServeTLS(viper.GetString("ListenAddr"), viper.GetString("TLSCert"), viper.GetString("TLSKey"), nil)
