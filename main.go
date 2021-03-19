@@ -1,7 +1,6 @@
 package main
 
 import (
-	_ "github.com/pkg/profile"
 	"bufio"
 	"encoding/base64"
 	"fmt"
@@ -18,7 +17,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"perso.tld/CountablyMany/syncer"
 	"strconv"
 	"strings"
 	"time"
