@@ -396,7 +396,8 @@ func (imc *IMAPConn) FetchNewInMailbox(account string, localmbname string, fromU
 					idlerChan <- true
 				}
 			}
-			imc.ReadLine("")
+			//imc.ReadLine("")
+			end=true
 		}
 	}
 
@@ -411,7 +412,9 @@ func (imc *IMAPConn) BlockIdle(mbox string) (err error) {
 	finished := false
 	go func() {
 		for !finished {
+			fmt.Println("blockidle : sleeping...")
 			time.Sleep(12*60*time.Second)
+			fmt.Println("blockidle: end sleeping")
 			if !finished {
 				err:=imc.WriteLine("DONE")
 				if err!=nil {
@@ -419,6 +422,7 @@ func (imc *IMAPConn) BlockIdle(mbox string) (err error) {
 				}
 				imc.WriteLine("x idle")
 			}
+			fmt.Println("blockidle: going back to sleep")
 		}
 	}()
 	for !finished {
@@ -471,7 +475,7 @@ func (imc *IMAPConn) MoveInMailbox(account string, localmbname string) error {
 				s, _ := imc.ReadLine("x OK")
 				fmt.Sscanf(s, "x OK [COPYUID %d %d %d", &d, &olduid, &uid)
 				fmt.Println("uid in orig folder is ", olduid, " uid in dest folder is ", uid)
-				if GetConfS(account+".imap","HasUIDMove")=="1" && olduid != 0 && uid != 0 {
+				if GetConfS(account+".imap","HasUIDMove")!="1" && olduid != 0 && uid != 0 {
 					olduids := strconv.Itoa(int(olduid))
 					imc.WriteLine("x uid store " + olduids + " flags \\Deleted")
 					imc.ReadLine("x OK")
@@ -532,7 +536,7 @@ func startIMAPLoop(acc string, wg *sync.WaitGroup) {
 
 func IdlerAll() {
 	dont_touch_inbox = true
-	idlerChan = make(chan bool)
+	idlerChan = make(chan bool, 65536)
 	sects, _ := Config.Find(".imap$")
 	for _,section := range sects {
 		accName:=section.Name()
@@ -543,8 +547,10 @@ func IdlerAll() {
 				fmt.Println("*** idler first login error, stopping idling for ", acc, " ***")
 				return
 			}
-			for {
+			for true {
+				fmt.Println("IdlerAll: calling BlockIdle")
 				err = imapconn.BlockIdle("inbox")
+				fmt.Println("IdlerAll: BlockIdle returned")
 				if err == nil {
 					imapconn.FetchNewInMailbox(acc, "inbox", 0)
 				} else {
@@ -555,6 +561,7 @@ func IdlerAll() {
 						break
 					}
 				}
+				fmt.Println("IdlerAll: after if-FetchNew/else")
 			}
 		}(accName,section)
 	}
