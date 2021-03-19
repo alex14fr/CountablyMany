@@ -7,8 +7,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"github.com/jhillyerd/enmime"
-	"github.com/spf13/viper"
-	"hash/crc64"
+	"github.com/alyu/configparser"
 	"html"
 	"io/ioutil"
 	"math/rand"
@@ -17,16 +16,16 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 )
 
+var Mailboxes (map[string]map[string]string)
 var separ string
 var ResetCacheMTime int64
 
 func HookAuth(r http.ResponseWriter, q *http.Request) bool {
-	lhash := viper.GetString("LoginHash")
+	lhash := GetConf("LoginHash")
 	if lhash == "" {
 		return false
 	}
@@ -51,7 +50,16 @@ func HdlRes(r http.ResponseWriter, q *http.Request) {
 	}
 }
 
-var SyncerConfig Config
+var Config (*configparser.Configuration)
+
+func GetConfS(se string, k string) string {
+	sec,_:=Config.Section(se)
+	return sec.ValueOf(k)
+}
+
+func GetConf(k string) string {
+	return GetConfS("all",k)
+}
 
 func HdlCmd(r http.ResponseWriter, q *http.Request) {
 	if !HookAuth(r, q) {
@@ -66,7 +74,7 @@ func HdlCmd(r http.ResponseWriter, q *http.Request) {
 		subject := querys[0]
 		movedest := querys[1]
 		subjectspl := strings.Split(subject, "/")
-		fnam := SyncerConfig.Path + separ + subjectspl[0] + separ + subjectspl[1] + separ + "moves" + separ + subjectspl[2]
+		fnam := GetConf("Path") + separ + subjectspl[0] + separ + subjectspl[1] + separ + "moves" + separ + subjectspl[2]
 		cnt := []byte(movedest)
 		err := ioutil.WriteFile(fnam, cnt, 0660)
 		fmt.Fprint(r, "wrote "+string(cnt)+" in "+fnam+" ", err)
@@ -77,18 +85,14 @@ func HdlCmd(r http.ResponseWriter, q *http.Request) {
 		query = "*/" + query
 	}
 
-	outstr := ListMessagesHTML(query, SyncerConfig.Path)
-
-	if HandleETag(r, q, ETagS(outstr)) {
-		return
-	}
+	outstr := ListMessagesHTML(query, GetConf("Path"))
 
 	fmt.Fprintf(r, outstr)
 }
 
 func GetMessageFile(r http.ResponseWriter, q *http.Request) (*os.File, string) {
 	id := strings.ReplaceAll(q.FormValue("id"), "..", "")
-	fname := SyncerConfig.Path + separ + id
+	fname := GetConf("Path") + separ + id
 	file, err2 := os.Open(fname)
 	if err2 != nil {
 		fmt.Fprint(r, "Can't open "+fname)
@@ -107,45 +111,6 @@ func HdlSource(r http.ResponseWriter, q *http.Request) {
 	http.ServeFile(r, q, fname)
 }
 
-func ETagF(fnam string) string {
-	ResetCacheL, err := os.Lstat(".reset_cache")
-	if err != nil {
-		ResetCacheMTime = 0
-	} else {
-		ResetCacheMTime = ResetCacheL.ModTime().Unix()
-	}
-	lst, err := os.Lstat(fnam)
-	if err != nil {
-		fmt.Println("ETagF: failed Lstat ", err)
-		s := strconv.Itoa(int(rand.Uint64()))
-		return s
-	}
-	mtime := lst.ModTime().Unix()
-	return fmt.Sprintf("%x%x", ResetCacheMTime, mtime)
-}
-
-func ETagS(str string) string {
-	ResetCacheL, err := os.Lstat(".reset_cache")
-	if err != nil {
-		ResetCacheMTime = 0
-	} else {
-		ResetCacheMTime = ResetCacheL.ModTime().Unix()
-	}
-	return fmt.Sprintf("%x%x", ResetCacheMTime, crc64.Checksum([]byte(str), crc64.MakeTable(crc64.ECMA)))
-}
-
-func HandleETag(r http.ResponseWriter, q *http.Request, etag string) bool {
-	return false
-	/*
-		r.Header().Set("ETag", etag)
-		if q.Header.Get("If-None-Match") == etag {
-			r.WriteHeader(304)
-			return true
-		}
-		return false
-	*/
-}
-
 func HdlRead(r http.ResponseWriter, q *http.Request) {
 	if !HookAuth(r, q) {
 		return
@@ -153,10 +118,6 @@ func HdlRead(r http.ResponseWriter, q *http.Request) {
 
 	id := q.FormValue("id")
 	file, fname := GetMessageFile(r, q)
-	//fmt.Println("hdlread ",file,fname)
-	if HandleETag(r, q, ETagF(fname)) {
-		return
-	}
 	mail, err2 := enmime.ReadEnvelope(bufio.NewReader(file))
 	if err2 != nil {
 		fmt.Fprint(r, "Can't parse mail id "+id)
@@ -214,9 +175,6 @@ func HdlReplytemplate(r http.ResponseWriter, q *http.Request) {
 	fwdMode2 := (q.FormValue("mode") == "f2")
 	file, fname := GetMessageFile(r, q)
 	_ = fname
-	/*	if HandleETag(r, q, ETagF(fname)) {
-		return
-	} */
 	mail, err2 := enmime.ReadEnvelope(bufio.NewReader(file))
 	if err2 != nil {
 		fmt.Fprint(r, "Can't parse mail id "+id+" ", err2)
@@ -244,11 +202,11 @@ func HdlReplytemplate(r http.ResponseWriter, q *http.Request) {
 	mailtxt = "> " + strings.ReplaceAll(mailtxt, "\n", "\n> ")
 	replyidentity := "default"
 	acc := strings.Split(id, "/")[0]
-	for identity, outId := range OutIdentities {
-		outId := outId.(map[string]interface{})
-		dfltFor, ok := outId["defaultfor"].(string)
-		if ok && strings.Index(dfltFor, acc) >= 0 {
-			replyidentity = identity
+	sections, _ := Config.Find(".smtp$")
+	for _, section := range sections {
+		dfltFor := section.ValueOf("DefaultFor")
+		if strings.Index(dfltFor, acc) >= 0 {
+			replyidentity = strings.Replace(section.Name(),".smtp","",-1)
 			break
 		}
 	}
@@ -280,10 +238,7 @@ func HdlAttachGet(r http.ResponseWriter, q *http.Request) {
 
 	cid := q.FormValue("cid")
 	mode := q.FormValue("mode")
-	file, fname := GetMessageFile(r, q)
-	if HandleETag(r, q, ETagF(fname)) {
-		return
-	}
+	file, _ := GetMessageFile(r, q)
 	mail, err2 := enmime.ReadEnvelope(bufio.NewReader(file))
 	if err2 != nil {
 		fmt.Fprint(r, "Can't parse mail")
@@ -317,7 +272,7 @@ func addAttachMessage(q *http.Request, boundary string) string {
 	if att == "" {
 		return ""
 	}
-	filc, _ := ioutil.ReadFile(SyncerConfig.Path + separ + att)
+	filc, _ := ioutil.ReadFile(GetConf("Path") + separ + att)
 	str := "\r\n--" + boundary + "\r\n" +
 		"Content-disposition: inline; filename=\"forwarded message.eml\"\r\n" +
 		"Content-type: message/rfc822; name=\"forwarded message.eml\"\r\n\r\n" +
@@ -358,7 +313,7 @@ func readStr(rw *bufio.ReadWriter) string {
 
 func checkAttach(q *http.Request, v string) bool {
 	_, mpfh, _ := q.FormFile(v)
-	fmt.Print("checkAttach of ", v, " : ", mpfh != nil)
+	//fmt.Print("checkAttach of ", v, " : ", mpfh != nil)
 	return mpfh != nil
 }
 
@@ -405,14 +360,15 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 	fmt.Sscanf(composeText, "%s\n", &identity)
 
 	boundary := "b" + fmt.Sprintf("%x", rand.Uint64())
-	outId := (OutIdentities[identity]).(map[string]interface{})
+	sect, _ := Config.Section(identity+".smtp")
+	outId := sect.Options()
 	multipart := checkAttach(q, "attach1") || checkAttach(q, "attach2") || checkAttach(q, "attach3") || checkAttach(q, "attach4") || q.FormValue("attachMessage") != ""
 	endheaders := "MIME-Version: 1.0\r\n" +
 		"Date: " + time.Now().Format(time.RFC1123Z) + "\r\n" +
 		"Message-ID: <" + fmt.Sprintf("%x", rand.Uint64()) +
 		fmt.Sprintf("%x", sha256.Sum256([]byte(composeText))) +
 		fmt.Sprintf("%x", rand.Uint64()) +
-		"@" + strings.Split(outId["fromaddr"].(string), "@")[1] + ">\r\n" +
+		"@" + strings.Split(outId["FromAddr"], "@")[1] + ">\r\n" +
 		"Content-Transfer-Encoding: 8bit\r\n" +
 		"Content-Type: "
 	if multipart {
@@ -426,9 +382,9 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 	}
 
 	composeText = strings.Replace(composeText, "@endheaders", endheaders, 1)
-	from := outId["fromaddr"].(string)
-	fromName := outId["fromname"].(string)
-	replytoAddr, err := outId["replytoaddr"].(string)
+	from := outId["FromAddr"]
+	fromName := outId["FromName"]
+	replytoAddr, err := outId["ReplyToAddr"]
 	headerTop := "From: " + fromName + " <" + from + ">\r\n"
 	if !err && replytoAddr != "" {
 		headerTop += "Reply-to: <" + replytoAddr + ">\r\n"
@@ -452,8 +408,8 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 		toaddrlist = toaddrlist + "," + ccaddrlist
 	}
 	toaddr := strings.Split(toaddrlist, ",")
-	status := Sendmail(outId["smtphost"].(string), outId["smtpuser"].(string), outId["smtppass"].(string), from, toaddr, composeText)
-	er := ioutil.WriteFile(outId["outfolder"].(string)+separ+boundary, []byte(composeText), 0600)
+	status := Sendmail(outId["SMTPHost"], outId["SMTPUser"], outId["SMTPPass"], from, toaddr, composeText)
+	er := ioutil.WriteFile(outId["OutFolder"]+separ+boundary, []byte(composeText), 0600)
 	if er != nil {
 		fmt.Fprint(r, status, " - copy failed: ", er)
 	} else {
@@ -480,36 +436,30 @@ func HdlIdler(r http.ResponseWriter, q *http.Request) {
 	fmt.Fprint(r, "data: ok\r\n\r\n")
 }
 
-var OutIdentities map[string]interface{}
-
 func main() {
 
 	rand.Seed(time.Now().UnixNano())
 	//defer profile.Start().Stop()
 	separ = string(filepath.Separator)
-	if os.Getenv("SYNCER") == "1" {
-		SyncerMain()
+	var err error
+	Config,err=configparser.Read("CountablyMany.ini")
+	if err!=nil {
+		fmt.Println("error reading conf file")
 		return
 	}
-
-	viper.SetDefault("ListenAddr", "127.0.0.1:1336")
-	/*
-		viper.SetDefault("TLSCert", "cert.pem")
-		viper.SetDefault("TLSKey", "key.pem")
-	*/
-	viper.SetDefault("LoginHash", "Y2hhbmdlOnRoaXM=") //change:this
-	viper.SetDefault("MaxMessages", 30000)
-	viper.SetDefault("StartupCommand", "")
-	viper.SetDefault("ReloadCommand", "")
-
-	viper.SetConfigName("CountablyMany")
-	viper.AddConfigPath(".")
-	viper.ReadInConfig()
-
-	OutIdentities = viper.GetStringMap("OutIdentities")
-
-	SyncerConfig = ReadConfig()
-
+	fmt.Println(Config)
+	sections, _ := Config.Find(".imap$")
+	Mailboxes=make(map[string](map[string]string))
+	for _, section := range sections {
+		acc:=strings.Replace(section.Name(),".imap","",-1)
+		Mailboxes[acc]=make(map[string]string)
+		for _,mbxdef := range strings.Split(section.ValueOf("Mailboxes")," ") {
+			mbxdefsplt:=strings.Split(mbxdef,"=")
+			Mailboxes[acc][mbxdefsplt[0]]=mbxdefsplt[1]
+		}
+	}
+	fmt.Println(Mailboxes)
+	SyncerMkdirs()
 	go SyncerMain()
 	http.HandleFunc("/", HdlRes)
 	http.HandleFunc("/cmd", HdlCmd)
@@ -520,12 +470,7 @@ func main() {
 	http.HandleFunc("/source", HdlSource)
 	http.HandleFunc("/resync", HdlResync)
 	http.HandleFunc("/idler", HdlIdler)
-	var err error
-	if viper.GetString("TLSCert") != "" && viper.GetString("TLSKey") != "" {
-		err = http.ListenAndServeTLS(viper.GetString("ListenAddr"), viper.GetString("TLSCert"), viper.GetString("TLSKey"), nil)
-	} else {
-		err = http.ListenAndServe(viper.GetString("ListenAddr"), nil)
-	}
+	err = http.ListenAndServe("127.0.0.1:1336", nil)
 	if err != nil {
 		fmt.Println(err)
 	}
