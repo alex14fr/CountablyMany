@@ -437,7 +437,8 @@ func HdlIdler(r http.ResponseWriter, q *http.Request) {
 }
 
 func main() {
-
+	dont_touch_inbox=false
+	dont_touch_other=false
 	rand.Seed(time.Now().UnixNano())
 	//defer profile.Start().Stop()
 	separ = string(filepath.Separator)
