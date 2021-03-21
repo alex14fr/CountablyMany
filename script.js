@@ -221,17 +221,9 @@ document.addEventListener("DOMContentLoaded", function(e) {
 		commandMode=true;
 		updCmdModeIndicator();
 	});
-	/*
-	window.setInterval(function() { 
-									fetch("/resync"); 
-									window.setTimeout(function(){
-												loadmsglist(document.getElementById("query").value);
-												},15*1000); }, 3*60*1000); */
-	/*fetch("/idler").then(r=>r.text().then(function() {
-		loadmsglist(document.getElementById("query").value); }));*/
 
 	var evtSrc=new EventSource("/idler",{withCredentials:true});
-	evtSrc.onmessage=() => loadmsglist(document.getElementById("query").value);
+	evtSrc.onmessage=() => { Notification.requestPermission().then(new Notification("new message in inbox")); loadmsglist(document.getElementById("query").value); }
 
 	if(!document.location.hash) {
 		document.location.hash='#'+encodeURIComponent('inbox');

@@ -432,12 +432,14 @@ func HdlIdler(r http.ResponseWriter, q *http.Request) {
 	}
 	r.Header().Set("Content-type", "text/event-stream")
 	r.Header().Set("Cache-control", "no-store")
-	WaitOneIdler()
-	fmt.Fprint(r, "data: ok\r\n\r\n")
+	for {
+		WaitOneIdler()
+		r.Write([]byte("data: newmsg\r\n\r\n"))
+		r.(http.Flusher).Flush()
+	}
 }
 
 func main() {
-	dont_touch_inbox=false
 	dont_touch_other=false
 	rand.Seed(time.Now().UnixNano())
 	//defer profile.Start().Stop()
@@ -451,6 +453,8 @@ func main() {
 	fmt.Println(Config)
 	sections, _ := Config.Find(".imap$")
 	Mailboxes=make(map[string](map[string]string))
+	idler_started=make(map[string]bool)
+	sync_inbox=make(map[string]bool)
 	for _, section := range sections {
 		acc:=strings.Replace(section.Name(),".imap","",-1)
 		Mailboxes[acc]=make(map[string]string)

@@ -22,7 +22,9 @@ import (
 	"time"
 )
 
-var dont_touch_inbox bool
+var hash_mutex sync.Mutex
+var idler_started map[string]bool
+var sync_inbox map[string]bool
 var dont_touch_other bool
 var idlerChan (chan bool)
 var db (*sql.DB)
@@ -121,6 +123,7 @@ type IndexEntry struct {
 	S string // subject
 	D string // date
 	I string // message-id
+	T string // to
 }
 
 func OpenDB() {
@@ -150,6 +153,7 @@ func MakeIEFromFile(filename string) IndexEntry {
 	ie.S = env.GetHeader("Subject")
 	ie.D = env.GetHeader("Date")
 	ie.I = env.GetHeader("Message-ID")
+	ie.T = env.GetHeader("To")
 	return ie
 }
 
@@ -258,8 +262,8 @@ func dbDelete(uid uint32, account string, mbox string) {
 }
 
 func dbAppend(ie IndexEntry) {
-	db.Exec("insert into messages (u,a,m,f,s,d,i) values (?,?,?,?,?,?,?)",
-		ie.U, ie.A, ie.M, ie.F, ie.S, ie.D, ie.I)
+	db.Exec("insert into messages (u,a,m,f,s,d,i,t) values (?,?,?,?,?,?,?,?)",
+		ie.U, ie.A, ie.M, ie.F, ie.S, ie.D, ie.I, ie.T)
 }
 
 func (imc *IMAPConn) AppendFile(accountname string, localmbname string, filename string, allowDup bool, keepOrig bool) error {
@@ -319,6 +323,17 @@ func GetHighestUID(account string, localmbname string) uint32 {
 
 func (imc *IMAPConn) FetchNewInMailbox(account string, localmbname string, fromUid uint32) error {
 	fmt.Println("Fetch new in mailbox ", account, "/", localmbname, "...")
+	if sync_inbox[account] {
+		fmt.Println("  already in progress")
+	}
+	hash_mutex.Lock()
+	sync_inbox[account]=true
+	hash_mutex.Unlock()
+	defer func() { 
+		hash_mutex.Lock()
+		sync_inbox[account]=false
+		hash_mutex.Unlock()
+	}()
 	if fromUid == 0 {
 		fromUid = GetHighestUID(account, localmbname) + 1
 	}
@@ -392,7 +407,7 @@ func (imc *IMAPConn) FetchNewInMailbox(account string, localmbname string, fromU
 					fmt.Println("keeping both for now")
 				}
 				dbAppend(ie)
-				if localmbname == "inbox" && dont_touch_inbox {
+				if localmbname == "inbox" && idler_started[account] {
 					idlerChan <- true
 				}
 			}
@@ -524,7 +539,7 @@ func startIMAPLoop(acc string, wg *sync.WaitGroup) {
 		fmt.Println("login error, skipping account ", acc)
 	} else {
 		for mbox,_ := range Mailboxes[acc] {
-			if !dont_touch_inbox || mbox != "inbox" {
+			if !sync_inbox[acc] || mbox != "inbox" {
 				imapconn.FetchNewInMailbox(acc, mbox, 0)
 			}
 			imapconn.AppendFilesInDir(acc, mbox, GetConf("Path")+separ+acc+separ+mbox+separ+"appends", false, false)
@@ -535,16 +550,20 @@ func startIMAPLoop(acc string, wg *sync.WaitGroup) {
 }
 
 func IdlerAll() {
-	dont_touch_inbox = true
 	idlerChan = make(chan bool, 65536)
 	sects, _ := Config.Find(".imap$")
 	for _,section := range sects {
 		accName:=section.Name()
 		accName=strings.Replace(accName,".imap","",-1)
+		if idler_started[accName] {
+			continue
+		}
 		go func(acc string, section (*configparser.Section)) {
+			idler_started[acc]=true
 			imapconn, err := Login(section.Options())
 			if err != nil {
 				fmt.Println("*** idler first login error, stopping idling for ", acc, " ***")
+				idler_started[acc]=false
 				return
 			}
 			for true {
@@ -558,6 +577,7 @@ func IdlerAll() {
 					imapconn, err = Login(section.Options())
 					if err != nil {
 						fmt.Println("*** idler relogin error, stopping idling for ", acc, " ***")
+						idler_started[acc]=false
 						break
 					}
 				}
@@ -585,10 +605,8 @@ func SyncerMain() {
 		go startIMAPLoop(acc, &wg)
 	}
 	wg.Wait()
-	if !dont_touch_inbox {
-		fmt.Println("SyncerMain : Starting idlers")
-		IdlerAll()
-	}
+	fmt.Println("SyncerMain : Starting idlers")
+	IdlerAll()
 	dont_touch_other = false
 	fmt.Println("SyncerMain stopping at ", time.Now().Format(time.ANSIC))
 }
