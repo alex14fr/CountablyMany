@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"github.com/alyu/configparser"
+	"github.com/fsnotify/fsnotify"
 	"crypto/tls"
 	"database/sql"
 	"errors"
@@ -26,7 +27,6 @@ var hash_mutex sync.Mutex
 var idler_started map[string]bool
 var sync_inbox map[string]bool
 var dont_touch_other bool
-var idlerChan (chan bool)
 var db (*sql.DB)
 
 type IMAPConn struct {
@@ -407,9 +407,11 @@ func (imc *IMAPConn) FetchNewInMailbox(account string, localmbname string, fromU
 					fmt.Println("keeping both for now")
 				}
 				dbAppend(ie)
+				/*fmt.Println("about to notify idlerchan...")
 				if localmbname == "inbox" && idler_started[account] {
 					idlerChan <- true
-				}
+					fmt.Println("notified idlerchan")
+				} */
 			}
 			//imc.ReadLine("")
 			end=true
@@ -550,7 +552,6 @@ func startIMAPLoop(acc string, wg *sync.WaitGroup) {
 }
 
 func IdlerAll() {
-	idlerChan = make(chan bool, 65536)
 	sects, _ := Config.Find(".imap$")
 	for _,section := range sects {
 		accName:=section.Name()
@@ -559,11 +560,15 @@ func IdlerAll() {
 			continue
 		}
 		go func(acc string, section (*configparser.Section)) {
+			hash_mutex.Lock()
 			idler_started[acc]=true
+			hash_mutex.Unlock()
 			imapconn, err := Login(section.Options())
 			if err != nil {
 				fmt.Println("*** idler first login error, stopping idling for ", acc, " ***")
+				hash_mutex.Lock()
 				idler_started[acc]=false
+				hash_mutex.Unlock()
 				return
 			}
 			for true {
@@ -577,7 +582,9 @@ func IdlerAll() {
 					imapconn, err = Login(section.Options())
 					if err != nil {
 						fmt.Println("*** idler relogin error, stopping idling for ", acc, " ***")
+						hash_mutex.Lock()
 						idler_started[acc]=false
+						hash_mutex.Unlock()
 						break
 					}
 				}
@@ -588,7 +595,19 @@ func IdlerAll() {
 }
 
 func WaitOneIdler() {
-	<-idlerChan
+	watcher,_:=fsnotify.NewWatcher()
+	defer watcher.Close()
+	for k,_:=range idler_started {
+		fmt.Println("WaitOneIdler : watching",k)
+		watcher.Add(GetConf("Path")+separ+k+separ+"inbox")
+	}
+	for true {
+		ev:=<-watcher.Events
+		if ev.Op & fsnotify.Create == fsnotify.Create {
+			break
+		}
+	}
+	fmt.Println("WaitOneIdler : something happened")
 }
 
 func SyncerMain() {

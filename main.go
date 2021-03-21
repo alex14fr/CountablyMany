@@ -432,7 +432,8 @@ func HdlIdler(r http.ResponseWriter, q *http.Request) {
 	}
 	r.Header().Set("Content-type", "text/event-stream")
 	r.Header().Set("Cache-control", "no-store")
-	for {
+	for true {
+		fmt.Println("calling WaitOneIdler")
 		WaitOneIdler()
 		r.Write([]byte("data: newmsg\r\n\r\n"))
 		r.(http.Flusher).Flush()

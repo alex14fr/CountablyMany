@@ -4,7 +4,7 @@ a,a:visited{color:#d11;text-decoration:none}
 #topbar {    }
 #msglistContainer { background-color:#444455; height: 250px; overflow-y:scroll;overflow-x:hidden;border-bottom:1px solid black }
 #loading { background-color: white; z-index: 3; display: none; position: fixed; bottom:10px; right:10px;}
-#showmsg { height:250px; overflow-y:scroll;overflow-x:hidden ;background-color:#bbc; color:#111}
+#showmsg { height:250px; overflow-y:scroll;overflow-x:hidden ;background-color:#eee; color:#111}
 .msglistRow:nth-child(even) { background-color: #334; }
 .msglistRow span { display:inline-block; white-space:nowrap; text-overflow:ellipsis; overflow:hidden; color:#4d4;  }
 .msglistRow span:nth-child(1) { padding-right: 5px; color:#eff;}
@@ -13,9 +13,9 @@ a,a:visited{color:#d11;text-decoration:none}
 .msglistRow span:nth-child(4) { color:#9d9; padding-right: 15px; }
 //.msglistRow:hover { background-color:#fc0; } 
 .rowselected { background-color:#778 !important; }
-#headers { background-color: #ccd; padding-bottom:10px; font-size:11pt}
+#headers { background-color: #ddd; padding-bottom:10px; font-size:11pt}
 #cmdmodeindicator { color:#333; font-size:130%;font-weight:bold;position:fixed;right:3ex;bottom:1em;}
-#mailbody { text-align: justify; max-width:78ex; padding-top:1ex;padding-left:2ex;border-left: 3ex solid #ccd; line-height:1.5;}
+#mailbody { text-align: justify; max-width:78ex; padding-top:1ex;padding-left:2ex;border-left: 3ex solid #eee; line-height:1.5;}
 @media(max-width:80ex) {
 #mailbody{margin-left:0;max-width:73ex;margin-left:5px;margin-right:5px;overflow-y:scroll}
 }
