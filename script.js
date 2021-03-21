@@ -1,6 +1,7 @@
 var hRows={};
 var curId=false; 
 var gnextId=false; 
+var lastNotifTime=0;
 
 function read(id) {
 	var x=document.getElementsByClassName('rowselected')
@@ -223,7 +224,14 @@ document.addEventListener("DOMContentLoaded", function(e) {
 	});
 
 	var evtSrc=new EventSource("/idler",{withCredentials:true});
-	evtSrc.onmessage=() => { Notification.requestPermission().then(new Notification("new message in inbox")); loadmsglist(document.getElementById("query").value); }
+	evtSrc.onmessage=() => { 
+		if(Date.now()-lastNotifTime>6000) { 
+			Notification.requestPermission().then(
+			 new Notification("new message in inbox")); 
+			lastNotifTime=Date.now(); 
+		}
+		loadmsglist(document.getElementById("query").value); 
+	}
 
 	if(!document.location.hash) {
 		document.location.hash='#'+encodeURIComponent('inbox');

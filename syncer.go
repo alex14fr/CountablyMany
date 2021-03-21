@@ -188,16 +188,31 @@ func ListMessagesHTML(path string, prepath string) string {
 
 	var rows (*sql.Rows)
 
+	//db.Exec("pragma journal_mode=wal") //upd
+
+	qry:="select u,a,m,s,d,i,f from messages where m=?"
+	if locmb == "sent" {
+		qry=strings.Replace(qry,",f",",t",-1)
+	}
 	if account == "*" {
-		rows, _ = db.Query("select u,a,m,f,s,d,i from messages where m=?", locmb)
+		rows, _ = db.Query(qry, locmb)
 	} else {
-		rows, _ = db.Query("select u,a,m,f,s,d,i from messages where m=? and a=?", locmb, account)
+		qry=qry+" and a=?"
+		rows, _ = db.Query(qry, locmb, account)
 	}
 
 	var ie IndexEntry
 
 	for rows.Next() {
-		rows.Scan(&ie.U, &ie.A, &ie.M, &ie.F, &ie.S, &ie.D, &ie.I)
+		rows.Scan(&ie.U, &ie.A, &ie.M, &ie.S, &ie.D, &ie.I, &ie.F)
+		/*upd
+		if(ie.F=="" && locmb=="sent") {
+			fna:=GetConf("Path")+separ+ie.A+separ+ie.M+separ+strconv.Itoa(int(ie.U))
+			fmt.Println("fna=",fna)
+			ie2:=MakeIEFromFile(fna)
+			fmt.Println("updating",ie.U,ie2.T)
+			db.Exec("update messages set t=? where a=? and m=? and u=?", ie2.T, ie.A, ie.M, ie.U)
+		} */
 		if (account == "*" || ie.A == account) && (locmb == "*" || ie.M == locmb) {
 			parsed, err := time.Parse("Mon, _2 Jan 2006 15:04:05 -0700", ie.D)
 			if err != nil {
