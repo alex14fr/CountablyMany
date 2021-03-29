@@ -370,69 +370,62 @@ func (imc *IMAPConn) FetchNewInMailbox(account string, localmbname string, fromU
 		fmt.Println("UIDValidity ok")
 	}
 
+	uidToFetch:=make([]uint32,65536)
+	sizesToFetch:=make([]uint32,65536)
+	var d int
+	i:=0
 	imc.ReadLine("x ")
 	imc.WriteLine(randomtag + " uid fetch " + strconv.Itoa(int(fromUid)) + ":* rfc822.size")
-	ss, _ := imc.ReadLine("")
-	if strings.Index(ss, randomtag) == 0 {
-		fmt.Println("no new message")
-		return nil
+	for true {
+		ss, _ := imc.ReadLine("")
+		if strings.Index(ss, randomtag) == 0 {
+			break
+		}
+		fmt.Println("scanning ", ss)
+		fmt.Sscanf(ss, "* %d FETCH (UID %d RFC822.SIZE %d)", &d, &uidToFetch[i], &sizesToFetch[i])
+		if uidToFetch[i]<fromUid {
+			break
+		}
+		fmt.Println("to fetch %d uid=%d size=%d",i,uidToFetch[i],sizesToFetch[i])
+		i++
 	}
-	var uid uint32
-	var leng int
-	var d int
-	imc.ReadLine(randomtag)
-	fmt.Sscanf(ss, "* %d FETCH (UID %d RFC822.SIZE {%d", &d, &uid, &leng)
-	fmt.Println("got uid:", uid, " length:", leng)
-	if uid < fromUid {
-		fmt.Println("uid<fromUid, no new message")
-		return nil
-	}
-
-	imc.WriteLine(randomtag + " uid fetch " + strconv.Itoa(int(fromUid)) + ":* rfc822")
-	end := false
-	for !end {
+	nToFetch:=i
+	i=0
+	for i<nToFetch {
+		var uid, leng int
+		fmt.Println("fetching %d / %d...\n", i, nToFetch-1)
+		imc.WriteLine(randomtag + " uid fetch " + strconv.Itoa(int(uidToFetch[i])) + " rfc822")
 		s, _ := imc.ReadLine("")
 		if strings.Index(s, randomtag) == 0 {
-			end = true
-		} else {
-			fmt.Sscanf(s, "* %d FETCH (UID %d RFC822 {%d", &d, &uid, &leng)
-			fmt.Println("got uid:", uid, " length:", leng)
-			content := make([]byte, leng)
-			_, err := io.ReadAtLeast(imc.RW, content, leng)
-			if err != nil {
-				fmt.Println("error ReadAtLeast, can't continue : ", err)
-				return err
-			}
-			if uid < fromUid {
-				fmt.Println("got uid lower than fromUid, skipping")
-			} else {
-				fmt.Println("writing to file...")
-				err = ioutil.WriteFile(GetConf("Path")+separ+account+separ+localmbname+separ+strconv.Itoa(int(uid)), content, 0600)
-				if err != nil {
-					fmt.Println("error WriteFile, can't continue : ", err)
-					return err
-				}
-				fmt.Println("inserting into index...")
-				ie := MakeIEFromFile(GetConf("Path") + separ + account + separ + localmbname + separ + strconv.Itoa(int(uid)))
-				ie.U = uid
-				ie.A = account
-				ie.M = localmbname
-				if HasMessageID(ie.I, ie.A) {
-					fmt.Println("was already in index (foreign move ?)")
-					fmt.Println("keeping both for now")
-				}
-				dbAppend(ie)
-				/*fmt.Println("about to notify idlerchan...")
-				if localmbname == "inbox" && idler_started[account] {
-					idlerChan <- true
-					fmt.Println("notified idlerchan")
-				} */
-			}
-			//imc.ReadLine("")
-			end=true
+			break
 		}
+		fmt.Sscanf(s, "* %d FETCH (UID %d RFC822 {%d", &d, &uid, &leng)
+		fmt.Println("got uid:", uid, " length:", leng)
+		content := make([]byte, leng)
+		_, err := io.ReadAtLeast(imc.RW, content, leng)
+		if err != nil {
+			fmt.Println("error ReadAtLeast, can't continue : ", err)
+			return err
+		}
+		imc.ReadLine(randomtag)
+		fmt.Println("writing to file...")
+		err = ioutil.WriteFile(GetConf("Path")+separ+account+separ+localmbname+separ+strconv.Itoa(int(uid)), content, 0600)
+		if err != nil {
+			fmt.Println("error WriteFile, can't continue : ", err)
+			return err
+		}
+		fmt.Println("inserting into index...")
+		ie := MakeIEFromFile(GetConf("Path") + separ + account + separ + localmbname + separ + strconv.Itoa(int(uid)))
+		ie.U = uint32(uid)
+		ie.A = account
+		ie.M = localmbname
+		if HasMessageID(ie.I, ie.A) {
+			fmt.Println("was already in index (foreign move ?)")
+			fmt.Println("keeping both for now")
+		}
+		dbAppend(ie)
+		i++
 	}
-
 	return nil
 }
 
