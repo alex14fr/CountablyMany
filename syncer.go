@@ -381,13 +381,15 @@ func (imc *IMAPConn) FetchNewInMailbox(account string, localmbname string, fromU
 		if strings.Index(ss, randomtag) == 0 {
 			break
 		}
-		fmt.Println("scanning ", ss)
-		fmt.Sscanf(ss, "* %d FETCH (UID %d RFC822.SIZE %d)", &d, &uidToFetch[i], &sizesToFetch[i])
-		if uidToFetch[i]<fromUid {
-			break
+		if strings.Index(ss, "FETCH") >=0 {
+			fmt.Println("scanning ", ss)
+			fmt.Sscanf(ss, "* %d FETCH (UID %d RFC822.SIZE %d)", &d, &uidToFetch[i], &sizesToFetch[i])
+			if uidToFetch[i]<fromUid {
+				break
+			}
+			fmt.Println("to fetch %d uid=%d size=%d",i,uidToFetch[i],sizesToFetch[i])
+			i++
 		}
-		fmt.Println("to fetch %d uid=%d size=%d",i,uidToFetch[i],sizesToFetch[i])
-		i++
 	}
 	nToFetch:=i
 	i=0
