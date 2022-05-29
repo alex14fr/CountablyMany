@@ -78,12 +78,15 @@ func (imc *IMAPConn) ReadLineDelim(waitUntil string) (sPre, sPost string, err er
 func (imc *IMAPConn) WriteLine(s string) (err error) {
 	if strings.Index(s, "x login ") == 0 {
 		fmt.Print("C: [LOGIN command]\r\n")
+	} else if strings.Index(s, "x authenticate ") == 0 {
+		fmt.Print("C: [AUTHENTICATE command]\r\n")
 	} else {
 		fmt.Print("C: " + s + "\r\n")
 	}
 	_, err = imc.RW.WriteString(s + "\r\n")
 	if err != nil {
 		fmt.Println("imap write error : ", err)
+		errorLog += "imap write error <br>"
 		return
 	}
 	imc.RW.Flush()
@@ -94,32 +97,44 @@ func Login(acc map[string]string) (imapconn *IMAPConn, err error) {
 	imapconn = new(IMAPConn)
 	conn, err := tls.Dial("tcp", acc["Server"], &tls.Config{})
 	if err != nil {
+		errorLog+="error dialing tls "+acc["Server"]+" <br>"
 		fmt.Print(err)
 		return
 	}
 	imapconn.Conn = conn
 	imapconn.RW = bufio.NewReadWriter(bufio.NewReader(imapconn.Conn), bufio.NewWriter(imapconn.Conn))
 	imapconn.ReadLine("")
+	var w string
 	if token, tokenpresent := acc["GMailToken"]; tokenpresent {
-		values := url.Values{}
-		values.Set("client_id","15619054492-a71i5sim3qjqqpopge11ni9t3nqgrgfl.apps.googleusercontent.com")
-		values.Set("client_secret","0IrJuAwNq5YLV0fEg5JQgeOb")
-		values.Set("grant_type","refresh_token")
-		values.Set("refresh_token",token)
-		fmt.Println(values.Encode())
-		resp, err := http.PostForm("https://oauth2.googleapis.com/token",values)
-		if err!=nil {
-			fmt.Println("error refreshing token", err)
-			return nil, err
-		} 
-		var v map[string]interface{}
-		decoder:=json.NewDecoder(resp.Body)
-		if err:=decoder.Decode(&v);err!=nil {
-			fmt.Println("2error parsing json", err)
-			return nil, err
-		} 
-		fmt.Println("** V=",v)
-		w:=fmt.Sprintf("user=%s\001auth=Bearer %s\001\001", acc["User"], v["access_token"].(string))
+		if oauthtok,tokcached:=oauthCache[acc["Server"]];tokcached && oauthTimestamp[acc["Server"]]>time.Now().Unix()-3000 {
+			fmt.Println("reusing cached oauth token")
+			w=oauthtok
+		} else {
+			fmt.Println("refreshing oauth token")
+			values := url.Values{}
+			values.Set("client_id","15619054492-a71i5sim3qjqqpopge11ni9t3nqgrgfl.apps.googleusercontent.com")
+			values.Set("client_secret","0IrJuAwNq5YLV0fEg5JQgeOb")
+			values.Set("grant_type","refresh_token")
+			values.Set("refresh_token",token)
+			//fmt.Println(values.Encode())
+			resp, err := http.PostForm("https://oauth2.googleapis.com/token",values)
+			if err!=nil {
+				fmt.Println("error refreshing token", err)
+				errorLog+="error refreshing oauth token<br>"
+				return nil, err
+			} 
+			var v map[string]interface{}
+			decoder:=json.NewDecoder(resp.Body)
+			if err:=decoder.Decode(&v);err!=nil {
+				fmt.Println("2error parsing json", err)
+				errorLog+="error refreshing oauth token<br>"
+				return nil, err
+			} 
+			//fmt.Println("** V=",v)
+			w=fmt.Sprintf("user=%s\001auth=Bearer %s\001\001", acc["User"], v["access_token"].(string))
+			oauthCache[acc["Server"]]=w
+			oauthTimestamp[acc["Server"]]=time.Now().Unix()
+		}
 		imapconn.WriteLine("x authenticate xoauth2 "+base64.StdEncoding.EncodeToString([]byte(w)))
 	} else {
 		imapconn.WriteLine("x login " + acc["User"] + " " + acc["Pass"])

@@ -22,7 +22,10 @@ import (
 
 var Mailboxes (map[string]map[string]string)
 var separ string
+var errorLog string
 var ResetCacheMTime int64
+var oauthCache map[string]string
+var oauthTimestamp map[string]int64
 
 func HookAuth(r http.ResponseWriter, q *http.Request) bool {
 	lhash := GetConf("LoginHash")
@@ -259,6 +262,13 @@ func HdlAttachGet(r http.ResponseWriter, q *http.Request) {
 	fmt.Fprint(r, "CID not found in mail")
 }
 
+func HdlError(r http.ResponseWriter, q *http.Request) {
+	if !HookAuth(r, q) {
+		return
+	}
+	fmt.Fprint(r, errorLog)
+}
+
 func headerStr(header string, value string) (s string) {
 	if value != "" {
 		return header + ": " + value + "\r\n"
@@ -359,6 +369,12 @@ func Sendmail_OAuth(host string, user string, token string, from string, to []st
 	rw.WriteString("ehlo localhost\r\n")
 	readStr(rw)
 
+	var w string
+
+	if oauthtok,tokcached:=oauthCache[host];tokcached && oauthTimestamp[host]>time.Now().Unix()-3000 {
+		fmt.Println("reusing cached oauth token")
+		w=oauthtok
+	} else {
 		values := url.Values{}
 		values.Set("client_id","15619054492-a71i5sim3qjqqpopge11ni9t3nqgrgfl.apps.googleusercontent.com")
 		values.Set("client_secret","0IrJuAwNq5YLV0fEg5JQgeOb")
@@ -375,9 +391,13 @@ func Sendmail_OAuth(host string, user string, token string, from string, to []st
 			retstr:=fmt.Sprintf("2error parsing json", err)
 			return retstr
 		} 
-		w:=fmt.Sprintf("user=%s\001auth=Bearer %s\001\001", user, v["access_token"].(string))
-		rw.WriteString("auth xoauth2 "+base64.StdEncoding.EncodeToString([]byte(w))+"\r\n")
-		readStr(rw)
+		w=fmt.Sprintf("user=%s\001auth=Bearer %s\001\001", user, v["access_token"].(string))
+		oauthCache[host]=w
+		oauthTimestamp[host]=time.Now().Unix()
+	}
+
+	rw.WriteString("auth xoauth2 "+base64.StdEncoding.EncodeToString([]byte(w))+"\r\n")
+	readStr(rw)
 
 	rw.WriteString("mail from: <" + from + ">\r\n")
 	readStr(rw)
@@ -518,6 +538,8 @@ func main() {
 		}
 	}
 	fmt.Println(Mailboxes)
+	oauthCache=make(map[string]string)
+	oauthTimestamp=make(map[string]int64)
 	SyncerMkdirs()
 	go SyncerMain()
 	http.HandleFunc("/", HdlRes)
@@ -529,6 +551,7 @@ func main() {
 	http.HandleFunc("/source", HdlSource)
 	http.HandleFunc("/resync", HdlResync)
 	http.HandleFunc("/idler", HdlIdler)
+	http.HandleFunc("/errlog", HdlError)
 	err = http.ListenAndServe("127.0.0.1:1336", nil)
 	if err != nil {
 		fmt.Println(err)
