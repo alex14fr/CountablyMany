@@ -12,7 +12,7 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"net/http"
-	_ "net/mail"
+	"encoding/json"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -348,6 +348,52 @@ func Sendmail(host string, user string, pass string, from string, to []string, d
 	return retstr
 }
 
+func Sendmail_OAuth(host string, user string, token string, from string, to []string, data string) string {
+	conn, err := tls.Dial("tcp", host, &tls.Config{})
+	if err != nil {
+		fmt.Print(err)
+		return "dial error"
+	}
+	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
+	readStr(rw)
+	rw.WriteString("ehlo localhost\r\n")
+	readStr(rw)
+
+		values := url.Values{}
+		values.Set("client_id","15619054492-a71i5sim3qjqqpopge11ni9t3nqgrgfl.apps.googleusercontent.com")
+		values.Set("client_secret","0IrJuAwNq5YLV0fEg5JQgeOb")
+		values.Set("grant_type","refresh_token")
+		values.Set("refresh_token",token)
+		resp, err := http.PostForm("https://oauth2.googleapis.com/token",values)
+		if err!=nil {
+			retstr:=fmt.Sprintf("error refreshing token", err)
+			return retstr
+		} 
+		var v map[string]interface{}
+		decoder:=json.NewDecoder(resp.Body)
+		if err:=decoder.Decode(&v);err!=nil {
+			retstr:=fmt.Sprintf("2error parsing json", err)
+			return retstr
+		} 
+		w:=fmt.Sprintf("user=%s\001auth=Bearer %s\001\001", user, v["access_token"].(string))
+		rw.WriteString("auth xoauth2 "+base64.StdEncoding.EncodeToString([]byte(w))+"\r\n")
+		readStr(rw)
+
+	rw.WriteString("mail from: <" + from + ">\r\n")
+	readStr(rw)
+	for _, toaddr := range to {
+		rw.WriteString("rcpt to: <" + toaddr + ">\r\n")
+		readStr(rw)
+	}
+	rw.WriteString("data\r\n")
+	readStr(rw)
+	rw.WriteString(data)
+	rw.WriteString("\r\n.\r\n")
+	retstr := readStr(rw)
+	conn.Close()
+	return "(oauth) " + retstr
+}
+
 func HdlSend(r http.ResponseWriter, q *http.Request) {
 	if !HookAuth(r, q) {
 		return
@@ -408,7 +454,13 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 		toaddrlist = toaddrlist + "," + ccaddrlist
 	}
 	toaddr := strings.Split(toaddrlist, ",")
-	status := Sendmail(outId["SMTPHost"], outId["SMTPUser"], outId["SMTPPass"], from, toaddr, composeText)
+	var status string
+	if token,tokenpresent:=outId["GMailToken"];tokenpresent {
+		fmt.Println("Sendmail using OAuth....")
+		status=Sendmail_OAuth(outId["SMTPHost"],outId["SMTPUser"],token,from,toaddr,composeText)
+	} else {
+		status=Sendmail(outId["SMTPHost"], outId["SMTPUser"], outId["SMTPPass"], from, toaddr, composeText)
+	}
 	er := ioutil.WriteFile(outId["OutFolder"]+separ+boundary, []byte(composeText), 0600)
 	if er != nil {
 		fmt.Fprint(r, status, " - copy failed: ", er)
@@ -422,6 +474,7 @@ func HdlResync(r http.ResponseWriter, q *http.Request) {
 		return
 	}
 	r.Header().Set("Cache-control", "no-store")
+	fmt.Println("Got resync")	
 	SyncerMain()
 	fmt.Fprint(r, "ok")
 }

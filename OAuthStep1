@@ -1,0 +1,3 @@
+#!/bin/sh
+curl -XPOST -d "client_id=15619054492-a71i5sim3qjqqpopge11ni9t3nqgrgfl.apps.googleusercontent.com&redirect_uri=urn:ietf:wg:oauth:2.0:oob&scope=https://mail.google.com&response_type=code" https://accounts.google.com/o/oauth2/v2/auth > /tmp/x.html ; firefox /tmp/x.html &
+

@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"database/sql"
 	"errors"
+	"encoding/base64"
 	"fmt"
 	"github.com/jhillyerd/enmime"
 	"html"
@@ -14,6 +15,9 @@ import (
 	"io/ioutil"
 	"math/rand"
 	_ "modernc.org/sqlite"
+	"net/http"
+	"net/url"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"sort"
@@ -96,7 +100,30 @@ func Login(acc map[string]string) (imapconn *IMAPConn, err error) {
 	imapconn.Conn = conn
 	imapconn.RW = bufio.NewReadWriter(bufio.NewReader(imapconn.Conn), bufio.NewWriter(imapconn.Conn))
 	imapconn.ReadLine("")
-	imapconn.WriteLine("x login " + acc["User"] + " " + acc["Pass"])
+	if token, tokenpresent := acc["GMailToken"]; tokenpresent {
+		values := url.Values{}
+		values.Set("client_id","15619054492-a71i5sim3qjqqpopge11ni9t3nqgrgfl.apps.googleusercontent.com")
+		values.Set("client_secret","0IrJuAwNq5YLV0fEg5JQgeOb")
+		values.Set("grant_type","refresh_token")
+		values.Set("refresh_token",token)
+		fmt.Println(values.Encode())
+		resp, err := http.PostForm("https://oauth2.googleapis.com/token",values)
+		if err!=nil {
+			fmt.Println("error refreshing token", err)
+			return nil, err
+		} 
+		var v map[string]interface{}
+		decoder:=json.NewDecoder(resp.Body)
+		if err:=decoder.Decode(&v);err!=nil {
+			fmt.Println("2error parsing json", err)
+			return nil, err
+		} 
+		fmt.Println("** V=",v)
+		w:=fmt.Sprintf("user=%s\001auth=Bearer %s\001\001", acc["User"], v["access_token"].(string))
+		imapconn.WriteLine("x authenticate xoauth2 "+base64.StdEncoding.EncodeToString([]byte(w)))
+	} else {
+		imapconn.WriteLine("x login " + acc["User"] + " " + acc["Pass"])
+	}
 	imapconn.ReadLine("x ")
 	return
 }
@@ -190,7 +217,7 @@ func ListMessagesHTML(path string, prepath string) string {
 
 	//db.Exec("pragma journal_mode=wal") //upd
 
-	qry:="select u,a,m,s,d,i,f from messages where m=?"
+	qry:="select distinct u,a,m,s,d,i,f from messages where m=?"
 	if locmb == "sent" {
 		qry=strings.Replace(qry,",f",",t",-1)
 	}
@@ -333,22 +360,12 @@ func GetHighestUID(account string, localmbname string) uint32 {
 	huid := uint32(0)
 	r := db.QueryRow("select MAX(u) from messages where a=? and m=?", account, localmbname)
 	r.Scan(&huid)
+	fmt.Println("GetHighestUID a="+account+" m="+localmbname+" = ",huid)
 	return huid
 }
 
 func (imc *IMAPConn) FetchNewInMailbox(account string, localmbname string, fromUid uint32) error {
 	fmt.Println("Fetch new in mailbox ", account, "/", localmbname, "...")
-	if sync_inbox[account] {
-		fmt.Println("  already in progress")
-	}
-	hash_mutex.Lock()
-	sync_inbox[account]=true
-	hash_mutex.Unlock()
-	defer func() { 
-		hash_mutex.Lock()
-		sync_inbox[account]=false
-		hash_mutex.Unlock()
-	}()
 	if fromUid == 0 {
 		fromUid = GetHighestUID(account, localmbname) + 1
 	}
@@ -385,9 +402,10 @@ func (imc *IMAPConn) FetchNewInMailbox(account string, localmbname string, fromU
 			fmt.Println("scanning ", ss)
 			fmt.Sscanf(ss, "* %d FETCH (UID %d RFC822.SIZE %d)", &d, &uidToFetch[i], &sizesToFetch[i])
 			if uidToFetch[i]<fromUid {
+				fmt.Println("breaking !")
 				break
 			}
-			fmt.Println("to fetch %d uid=%d size=%d",i,uidToFetch[i],sizesToFetch[i])
+			fmt.Println("to fetch ",i,"uid=",uidToFetch[i],"size=",sizesToFetch[i])
 			i++
 		}
 	}
@@ -395,7 +413,7 @@ func (imc *IMAPConn) FetchNewInMailbox(account string, localmbname string, fromU
 	i=0
 	for i<nToFetch {
 		var uid, leng int
-		fmt.Println("fetching %d / %d...\n", i, nToFetch-1)
+		fmt.Println("fetching ",i,"/ ",nToFetch-1,"...\n")
 		imc.WriteLine(randomtag + " uid fetch " + strconv.Itoa(int(uidToFetch[i])) + " rfc822")
 		s, _ := imc.ReadLine("")
 		if strings.Index(s, randomtag) == 0 {
@@ -422,7 +440,7 @@ func (imc *IMAPConn) FetchNewInMailbox(account string, localmbname string, fromU
 		ie.A = account
 		ie.M = localmbname
 		if HasMessageID(ie.I, ie.A) {
-			fmt.Println("was already in index (foreign move ?)")
+			fmt.Println("MID "+ie.I+" was already in index (foreign move ?)")
 			fmt.Println("keeping both for now")
 		}
 		dbAppend(ie)
@@ -543,7 +561,7 @@ func SyncerMkdirs() {
 	}
 }
 
-func startIMAPLoop(acc string, wg *sync.WaitGroup) {
+func startIMAPLoop(acc string) {
 	configs, _ := Config.Section(acc+".imap")
 	accparam := configs.Options()
 	imapconn, err := Login(accparam)
@@ -551,14 +569,14 @@ func startIMAPLoop(acc string, wg *sync.WaitGroup) {
 		fmt.Println("login error, skipping account ", acc)
 	} else {
 		for mbox,_ := range Mailboxes[acc] {
-			if !sync_inbox[acc] || mbox != "inbox" {
-				imapconn.FetchNewInMailbox(acc, mbox, 0)
-			}
+			imapconn.FetchNewInMailbox(acc, mbox, 0)
 			imapconn.AppendFilesInDir(acc, mbox, GetConf("Path")+separ+acc+separ+mbox+separ+"appends", false, false)
 			imapconn.MoveInMailbox(acc, mbox)
 		}
 	}
-	wg.Done()
+	if imapconn.Conn != nil {
+		imapconn.Conn.Close()
+	}
 }
 
 func IdlerAll() {
@@ -621,21 +639,15 @@ func WaitOneIdler() {
 }
 
 func SyncerMain() {
-	if dont_touch_other {
-		return
-	}
-	dont_touch_other = true
 	separ = string(filepath.Separator)
 	SyncerMkdirs()
 	fmt.Println("SyncerMain starting at ", time.Now().Format(time.ANSIC))
-	var wg sync.WaitGroup
 	for acc,_ := range Mailboxes {
-		wg.Add(1)
-		go startIMAPLoop(acc, &wg)
+		startIMAPLoop(acc)
 	}
-	wg.Wait()
+	/*
 	fmt.Println("SyncerMain : Starting idlers")
 	IdlerAll()
-	dont_touch_other = false
+	*/
 	fmt.Println("SyncerMain stopping at ", time.Now().Format(time.ANSIC))
 }

@@ -1,0 +1,2 @@
+#!/bin/sh
+curl -XPOST -d "client_id=15619054492-a71i5sim3qjqqpopge11ni9t3nqgrgfl.apps.googleusercontent.com&client_secret=0IrJuAwNq5YLV0fEg5JQgeOb&code=$1&redirect_uri=urn%3Aietf%3Awg%3Aoauth%3A2.0%3Aoob&grant_type=authorization_code" https://oauth2.googleapis.com/token
