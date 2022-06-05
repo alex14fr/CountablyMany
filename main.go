@@ -392,11 +392,12 @@ func Sendmail_OAuth(host string, user string, token string, from string, to []st
 			return retstr
 		} 
 		w=fmt.Sprintf("user=%s\001auth=Bearer %s\001\001", user, v["access_token"].(string))
+		w=base64.StdEncoding.EncodeToString([]byte(w))
 		oauthCache[host]=w
 		oauthTimestamp[host]=time.Now().Unix()
 	}
 
-	rw.WriteString("auth xoauth2 "+base64.StdEncoding.EncodeToString([]byte(w))+"\r\n")
+	rw.WriteString("auth xoauth2 "+w+"\r\n")
 	readStr(rw)
 
 	rw.WriteString("mail from: <" + from + ">\r\n")
@@ -513,6 +514,17 @@ func HdlIdler(r http.ResponseWriter, q *http.Request) {
 	}
 }
 
+func HdlTokens(r http.ResponseWriter, q *http.Request) {
+	if !HookAuth(r, q) {
+		return
+	}
+	r.Header().Set("Content-type","text/plain")
+	r.Header().Set("Content-disposition","inline")
+	fmt.Fprintln(r,oauthCache)
+	fmt.Fprintln(r,oauthTimestamp)
+
+}
+
 func main() {
 	dont_touch_other=false
 	rand.Seed(time.Now().UnixNano())
@@ -552,6 +564,7 @@ func main() {
 	http.HandleFunc("/resync", HdlResync)
 	http.HandleFunc("/idler", HdlIdler)
 	http.HandleFunc("/errlog", HdlError)
+	http.HandleFunc("/tokens", HdlTokens)
 	err = http.ListenAndServe("127.0.0.1:1336", nil)
 	if err != nil {
 		fmt.Println(err)

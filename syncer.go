@@ -132,10 +132,11 @@ func Login(acc map[string]string) (imapconn *IMAPConn, err error) {
 			} 
 			//fmt.Println("** V=",v)
 			w=fmt.Sprintf("user=%s\001auth=Bearer %s\001\001", acc["User"], v["access_token"].(string))
+			w=base64.StdEncoding.EncodeToString([]byte(w))
 			oauthCache[acc["Server"]]=w
 			oauthTimestamp[acc["Server"]]=time.Now().Unix()
 		}
-		imapconn.WriteLine("x authenticate xoauth2 "+base64.StdEncoding.EncodeToString([]byte(w)))
+		imapconn.WriteLine("x authenticate xoauth2 "+w)
 	} else {
 		imapconn.WriteLine("x login " + acc["User"] + " " + acc["Pass"])
 	}
