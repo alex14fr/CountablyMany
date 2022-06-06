@@ -29,5 +29,21 @@ void main(void) {
 		*ss=0;
 		puts(req);
 	}
+	char code[256];
+	for(int i=0; i<strlen(req)-5; i++) {
+		if(req[i]=='c' && req[i+1]=='o' && req[i+2]=='d' && req[i+3]=='e' && req[i+4]=='=') {
+			int j;
+			for(j=i+5; j<strlen(req) && req[j]!='&' && j-i-5<256; j++)
+				if( (req[j]>='a' && req[j]<='z') || (req[j]>='A' && req[j]<='Z') || (req[j]>='0' && req[j]<='9') || req[j]=='/' || req[j]=='_' || req[j]=='-')
+					code[j-i-5]=req[j];
+				else
+					puts("forbidden char in received code");
+			code[j-i-5]=0;
+		}
+	}
+	puts(code);
 	write(s2,OKMSG,strlen(OKMSG));
+	write(s2,code,strlen(code));
+	char *argv[]={"./OAuthStep2", code, NULL};
+	execve("./OAuthStep2", argv, NULL);
 }
