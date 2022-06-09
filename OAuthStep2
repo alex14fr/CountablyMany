@@ -1,5 +1,5 @@
 #!/bin/sh
-curl -XPOST -d "client_id=15619054492-a71i5sim3qjqqpopge11ni9t3nqgrgfl.apps.googleusercontent.com&client_secret=0IrJuAwNq5YLV0fEg5JQgeOb&code=$1&redirect_uri=http://localhost:16741/&grant_type=authorization_code" https://oauth2.googleapis.com/token > token.json
+curl -XPOST -d "client_id="$(cat oauth_client_id)"&client_secret="$(cat oauth_client_secret)"&code=$1&redirect_uri=http://localhost:16741/&grant_type=authorization_code" https://oauth2.googleapis.com/token > token.json
 refresh_tok=$(jq -r ".refresh_token" < token.json)
 sed "s|__TOKEN|$refresh_tok|" CountablyMany.ini.in > CountablyMany.ini
 sh ~/LaunchCM

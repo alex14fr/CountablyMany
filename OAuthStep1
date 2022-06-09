@@ -1,5 +1,9 @@
 #!/bin/sh
 #urn:ietf:wg:oauth:2.0:oob
 ./oauth_s&
-curl -XPOST -d "client_id=15619054492-a71i5sim3qjqqpopge11ni9t3nqgrgfl.apps.googleusercontent.com&redirect_uri=http://localhost:16741/&scope=https://mail.google.com&response_type=code" https://accounts.google.com/o/oauth2/v2/auth > /tmp/x.html ; firefox /tmp/x.html &
+umask 0600
+rm oauth_client_id oauth_client_secret
+grep "GMailClientId=" CountablyMany.ini.in | cut -d'=' -f2 > oauth_client_id
+grep "GMailClientSecret=" CountablyMany.ini.in | cut -d'=' -f2 > oauth_client_secret
+curl -XPOST -d "client_id="$(cat oauth_client_id)"&redirect_uri=http://localhost:16741/&scope=https://mail.google.com&response_type=code" https://accounts.google.com/o/oauth2/v2/auth > /tmp/x.html ; firefox /tmp/x.html &
 
