@@ -1,0 +1,19 @@
+[all]
+LoginHash=change:this
+Path=/home/al/Mail2
+GMailClientId=changethis
+GMailClientSecret=changethis
+[default.smtp]
+SMTPHost=smtp.yourisp.com:465
+User=yourusername
+Pass=yourpassword
+#GMailToken=__TOKEN #use this for gmail oauth (use shell scripts OAuthStep1 and OAuthStep2 to replace __TOKEN by a valid refresh token)
+FromAddr=hello@yourisp.com
+FromName=Your name from
+OutFolder=/home/al/Mail2/myisp/send/appends/
+DefaultFor=gmail
+[gmail.imap]
+Server=imap.gmail.com:imaps
+HasUIDMove=1
+GMailToken=__TOKEN
+Mailboxes=inbox=INBOX sent=XSent archive=XArchive

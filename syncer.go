@@ -112,8 +112,8 @@ func Login(acc map[string]string) (imapconn *IMAPConn, err error) {
 		} else {
 			fmt.Println("refreshing oauth token")
 			values := url.Values{}
-			values.Set("client_id","15619054492-a71i5sim3qjqqpopge11ni9t3nqgrgfl.apps.googleusercontent.com")
-			values.Set("client_secret","0IrJuAwNq5YLV0fEg5JQgeOb")
+			values.Set("client_id",GetConf("GMailClientId"))
+			values.Set("client_secret",GetConf("GMailClientSecret"))
 			values.Set("grant_type","refresh_token")
 			values.Set("refresh_token",token)
 			//fmt.Println(values.Encode())
