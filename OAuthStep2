@@ -1,6 +1,9 @@
 #!/bin/sh
+umask 0077
+rm token.json
 curl -XPOST -d "client_id="$(cat oauth_client_id)"&client_secret="$(cat oauth_client_secret)"&code=$1&redirect_uri=http://localhost:16741/&grant_type=authorization_code" https://oauth2.googleapis.com/token > token.json
 refresh_tok=$(jq -r ".refresh_token" < token.json)
 sed "s|__TOKEN|$refresh_tok|" CountablyMany.ini.in > CountablyMany.ini
+chmod 0600 CountablyMany.ini
 sh ~/LaunchCM
 
