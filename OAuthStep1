@@ -1,7 +1,7 @@
 #!/bin/sh
 #urn:ietf:wg:oauth:2.0:oob
 ./oauth_s&
-umask 0600
+umask 0077
 rm oauth_client_id oauth_client_secret
 grep "GMailClientId=" CountablyMany.ini.in | cut -d'=' -f2 > oauth_client_id
 grep "GMailClientSecret=" CountablyMany.ini.in | cut -d'=' -f2 > oauth_client_secret
