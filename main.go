@@ -377,10 +377,11 @@ func Sendmail_OAuth(host string, user string, token string, from string, to []st
 	} else {
 		values := url.Values{}
 		values.Set("client_id",GetConf("GMailClientId"))
-		values.Set("client_secret",GetConf("GmailClientSecret"))
+		values.Set("client_secret",GetConf("GMailClientSecret"))
 		values.Set("grant_type","refresh_token")
 		values.Set("refresh_token",token)
 		resp, err := http.PostForm("https://oauth2.googleapis.com/token",values)
+
 		if err!=nil {
 			retstr:=fmt.Sprintf("error refreshing token", err)
 			return retstr

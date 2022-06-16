@@ -14,7 +14,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math/rand"
-	_ "modernc.org/sqlite"
+	_ "github.com/mattn/go-sqlite3"
 	"net/http"
 	"net/url"
 	"encoding/json"
@@ -116,7 +116,6 @@ func Login(acc map[string]string) (imapconn *IMAPConn, err error) {
 			values.Set("client_secret",GetConf("GMailClientSecret"))
 			values.Set("grant_type","refresh_token")
 			values.Set("refresh_token",token)
-			//fmt.Println(values.Encode())
 			resp, err := http.PostForm("https://oauth2.googleapis.com/token",values)
 			if err!=nil {
 				fmt.Println("error refreshing token", err)
@@ -172,7 +171,7 @@ type IndexEntry struct {
 func OpenDB() {
 	separ = string(filepath.Separator)
 	var err error
-	db, err = sql.Open("sqlite", GetConf("Path")+separ+"Index.sqlite")
+	db, err = sql.Open("sqlite3", GetConf("Path")+separ+"Index.sqlite")
 	if err != nil {
 		fmt.Println("! DB error unable to open Index.sqlite: ", err)
 	}

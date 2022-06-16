@@ -5,5 +5,5 @@ curl -XPOST -d "client_id="$(cat oauth_client_id)"&client_secret="$(cat oauth_cl
 refresh_tok=$(jq -r ".refresh_token" < token.json)
 sed "s|__TOKEN|$refresh_tok|" CountablyMany.ini.in > CountablyMany.ini
 chmod 0600 CountablyMany.ini
-sh ~/LaunchCM
+sh /home/al/LaunchCM
 
