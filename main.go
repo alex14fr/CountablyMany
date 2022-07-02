@@ -253,7 +253,7 @@ func HdlAttachGet(r http.ResponseWriter, q *http.Request) {
 			if mode == "attach" {
 				r.Header().Set("Content-Disposition", "attachment; filename=\""+att.FileName+"\"")
 			} else {
-				r.Header().Set("Content-Disposition", "inline")
+				r.Header().Set("Content-Disposition", "inline; filename=\""+att.FileName+"\"")
 			}
 			fmt.Fprintf(r, "%s", att.Content)
 			return
@@ -416,6 +416,25 @@ func Sendmail_OAuth(host string, user string, token string, from string, to []st
 	return "(oauth) " + retstr
 }
 
+func mimeQPEncode(s string) string {
+	b:=[]byte(s)
+	nonprintable:=false
+	r:=""
+	for _,x:=range(b) {
+		if(x>31 && x<128) {
+			r=r+fmt.Sprintf("%c",x)
+		} else {
+			nonprintable=true
+			r=r+fmt.Sprintf("=%2X",x)
+		}
+	}
+	if(nonprintable) {
+		return "=?UTF-8?Q?"+r+"?="
+	} else {
+		return r
+	}
+}
+
 func HdlSend(r http.ResponseWriter, q *http.Request) {
 	if !HookAuth(r, q) {
 		return
@@ -449,7 +468,31 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 		endheaders += "text/plain; charset=\"utf8\"\r\n"
 	}
 
-	composeText = strings.Replace(composeText, "@endheaders", endheaders, 1)
+	//composeText = strings.Replace(composeText, "@endheaders", endheaders, 1)
+	before, after, _ := strings.Cut(composeText, "@endheaders")
+	composeText=""
+	for _,header := range strings.Split(before,"\n") {
+		headername, headerval, found := strings.Cut(header, ": ")
+		if(!found && header!="") {
+			composeText=composeText+header+"\n"
+		}
+		if(headerval != "" && headerval != " " && headerval != "\r" && headerval != "\n") {
+			/*b:=new(strings.Builder)
+			qpw:=quotedprintable.NewWriter(b)
+			qpw.Write([]byte(headerval))
+			qpw.Close()
+			fmt.Println("after encoding: ",b.String())
+			beginenc:=""
+			endenc:=""
+			if(b.String()!=headerval) {
+				beginenc="=?utf8?Q?"
+				endenc="?="
+			} */
+			composeText=composeText+headername+": "+mimeQPEncode(headerval)+"\r\n" //beginenc+b.String()+endenc+"\r\n"
+		}
+	}
+	composeText=composeText+endheaders+after
+
 	from := outId["FromAddr"]
 	fromName := outId["FromName"]
 	replytoAddr, err := outId["ReplyToAddr"]
@@ -471,7 +514,12 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 
 	var toaddrlist, ccaddrlist string
 	fmt.Sscanf(strings.Split(composeText, "To: ")[1], "%s\r\n", &toaddrlist)
-	fmt.Sscanf(strings.Split(composeText, "Cc: ")[1], "%s\r\n", &ccaddrlist)
+	spltCC:=strings.Split(composeText, "Cc: ")
+	if(len(spltCC)>1) {
+		fmt.Sscanf(spltCC[1], "%s\r\n", &ccaddrlist)
+	} else {
+		ccaddrlist=""
+	}
 	if ccaddrlist != "" {
 		toaddrlist = toaddrlist + "," + ccaddrlist
 	}
