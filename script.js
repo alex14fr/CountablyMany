@@ -2,7 +2,7 @@ var hRows={};
 var curId=false; 
 var gnextId=false; 
 var lastNotifTime=0;
-var idler=false;
+var idler=true;
 
 function read(id) {
 	var x=document.getElementsByClassName('rowselected')
