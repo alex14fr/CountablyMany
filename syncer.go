@@ -638,11 +638,13 @@ func IdlerAll() {
 }
 
 func WaitOneIdler() {
+	separ = string(filepath.Separator)
 	watcher,_:=fsnotify.NewWatcher()
 	defer watcher.Close()
-	for k,_:=range idler_started {
-		fmt.Println("WaitOneIdler : watching",k)
-		watcher.Add(GetConf("Path")+separ+k+separ+"inbox")
+	for acc,_ := range Mailboxes {
+		fmt.Println("aaaa")
+		fmt.Println("Watching "+GetConf("Path")+separ+acc+separ+"inbox")
+		watcher.Add(GetConf("Path")+separ+acc+separ+"inbox")
 	}
 	for true {
 		ev:=<-watcher.Events

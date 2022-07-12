@@ -37,7 +37,10 @@ function mainloop($config) {
 				if(!fwrite($fh, "done\r\n")) $connectionok=false;
 				readl($fh);
 				print "- Got $ln";
-				system($cmd);
+				if(strpos($ln,"EXISTS")!==false) {
+					print "running cmd\n";
+					system($cmd);
+				}
 				sleep(3);
 			}
 		}
