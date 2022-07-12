@@ -1,0 +1,5 @@
+#!/bin/sh
+cd $(dirname $0)
+tok=$(curl -XPOST -d "client_id="$(cat oauth_client_id)"&client_secret="$(cat oauth_client_secret)"&grant_type=refresh_token&refresh_token="$(jq -r .refresh_token < token.json) https://oauth2.googleapis.com/token | jq -r .access_token)
+echo $tok
+
