@@ -668,3 +668,17 @@ func SyncerMain() {
 	*/
 	fmt.Println("SyncerMain stopping at ", time.Now().Format(time.ANSIC))
 }
+
+func SyncerQuick(acc string, mbox string) {
+	configs, _ := Config.Section(acc+".imap")
+	accparam := configs.Options()
+	imapconn, err := Login(accparam)
+	if err != nil { 
+		fmt.Println("login error, skipping account ", acc) 
+	} else {
+		imapconn.FetchNewInMailbox(acc, mbox, 0)
+	}
+	if imapconn.Conn != nil {
+		imapconn.Conn.Close()
+	}
+}

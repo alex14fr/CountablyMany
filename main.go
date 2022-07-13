@@ -545,7 +545,14 @@ func HdlResync(r http.ResponseWriter, q *http.Request) {
 	}
 	r.Header().Set("Cache-control", "no-store")
 	fmt.Println("Got resync")	
-	SyncerMain()
+	quickAcc:=q.FormValue("quickacc")
+	quickMbox:=q.FormValue("quickmbox")
+	if quickAcc!="" && quickMbox!="" {
+		fmt.Println("Quick resync "+quickAcc+"/"+quickMbox)
+		SyncerQuick(quickAcc, quickMbox)
+	} else {
+		SyncerMain()
+	}
 	fmt.Fprint(r, "ok")
 }
 
