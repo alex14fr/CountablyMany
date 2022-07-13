@@ -642,7 +642,6 @@ func WaitOneIdler() {
 	watcher,_:=fsnotify.NewWatcher()
 	defer watcher.Close()
 	for acc,_ := range Mailboxes {
-		fmt.Println("aaaa")
 		fmt.Println("Watching "+GetConf("Path")+separ+acc+separ+"inbox")
 		watcher.Add(GetConf("Path")+separ+acc+separ+"inbox")
 	}
