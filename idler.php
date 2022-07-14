@@ -7,7 +7,7 @@ function readl($fh) {
 	do {
 		$l=fgets($fh);
 		ts(); print "< $l";
-	} while(substr($l,0,2)!="x " && substr($l,0,2)!="+ ");
+	} while($l!==false && !feof($fh) && substr($l,0,2)!="x " && substr($l,0,2)!="+ ");
 	ts(); print "---\n";
 }
 
@@ -32,11 +32,11 @@ function mainloop($config) {
 			fwrite($fh, "x login ".$config['login']." ".$config['passwd']."\r\n");
 		}
 		readl($fh);
-		fwrite($fh, "x select ".$config['cmMbox']."\r\n");
-		readl($fh);
-		stream_set_timeout($fh, 29*60);
 		$connectionok=true;
 		while($connectionok) {
+			fwrite($fh, "x select ".$config['cmMbox']."\r\n");
+			readl($fh);
+			stream_set_timeout($fh, 20*60);
 			fwrite($fh, "x idle\r\n");
 			readl($fh);
 			$ln=fgets($fh);
