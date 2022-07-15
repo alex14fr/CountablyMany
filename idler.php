@@ -37,9 +37,9 @@ function mainloop($config) {
 		while($connectionok) {
 			fwrite($fh, "x select ".$config['cmMbox']."\r\n");
 			readl($fh);
-			stream_set_timeout($fh, 20*60);
 			fwrite($fh, "x idle\r\n");
 			readl($fh);
+			stream_set_timeout($fh, 20*60);
 			$ln=fgets($fh);
 			$timed_out=stream_get_meta_data($fh)['timed_out'];
 			if(!$timed_out && ($ln===false || feof($fh))) {
