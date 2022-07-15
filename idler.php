@@ -4,6 +4,7 @@ function ts() {
 }
 
 function readl($fh) {
+	stream_set_timeout($fh, 20);
 	do {
 		$l=fgets($fh);
 		ts(); print "< $l";
@@ -45,6 +46,7 @@ function mainloop($config) {
 				$connectionok=false;
 			} else if($timed_out) {
 				ts(); print "- try reset idle\n";
+				stream_set_timeout($fh, 20);
 				if(!fwrite($fh, "done\r\n")) $connectionok=false;
 				readl($fh);
 			} else {
