@@ -225,15 +225,7 @@ document.addEventListener("DOMContentLoaded", function(e) {
 	});
 
 	if(idler) {
-		var evtSrc=new EventSource("/idler",{withCredentials:true});
-		evtSrc.onmessage=() => { 
-			if(Date.now()-lastNotifTime>6000) { 
-				Notification.requestPermission().then(
-				 new Notification("new message in inbox")); 
-				lastNotifTime=Date.now(); 
-			}
-			loadmsglist(document.getElementById("query").value); 
-		}
+		registerEvtsrc();
 	}
 
 	if(!document.location.hash) {
@@ -250,6 +242,21 @@ document.addEventListener("DOMContentLoaded", function(e) {
 
 window.addEventListener("resize", adjustsizes);
 
+function registerEvtsrc() {
+		var evtSrc=new EventSource("/idler",{withCredentials:true});
+		evtSrc.onmessage=() => { 
+			if(Date.now()-lastNotifTime>6000) { 
+				Notification.requestPermission().then(
+				 new Notification("new message in inbox")); 
+				lastNotifTime=Date.now(); 
+			}
+			loadmsglist(document.getElementById("query").value); 
+		}
+		evtSrc.onerror=() => {
+			alert("idler error");
+			location.reload(true);
+		}
+}
 
 function toComposeMode() {
 	composeMode=true;
