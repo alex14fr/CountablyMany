@@ -335,21 +335,21 @@ func Sendmail(host string, user string, pass string, from string, to []string, d
 	}
 	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 	readStr(rw)
-	rw.WriteString("ehlo localhost\r\n")
+	rw.WriteString("EHLO x\r\n")
 	readStr(rw)
-	rw.WriteString("auth login\r\n")
+	rw.WriteString("AUTH LOGIN\r\n")
 	readStr(rw)
 	rw.WriteString(base64.StdEncoding.EncodeToString([]byte(user)) + "\r\n")
 	readStr(rw)
 	rw.WriteString(base64.StdEncoding.EncodeToString([]byte(pass)) + "\r\n")
 	readStr(rw)
-	rw.WriteString("mail from: <" + from + ">\r\n")
+	rw.WriteString("MAIL FROM:<" + from + ">\r\n")
 	readStr(rw)
 	for _, toaddr := range to {
-		rw.WriteString("rcpt to: <" + toaddr + ">\r\n")
+		rw.WriteString("RCPT TO:<" + toaddr + ">\r\n")
 		readStr(rw)
 	}
-	rw.WriteString("data\r\n")
+	rw.WriteString("DATA\r\n")
 	readStr(rw)
 	rw.WriteString(data)
 	rw.WriteString("\r\n.\r\n")
@@ -400,17 +400,17 @@ func Sendmail_OAuth(host string, user string, token string, from string, to []st
 
 	rw.WriteString("auth xoauth2 "+w+"\r\n")
 	readStr(rw)
-
-	rw.WriteString("mail from: <" + from + ">\r\n")
+	rw.WriteString("mail from:<" + from + ">\r\n")
 	readStr(rw)
 	for _, toaddr := range to {
-		rw.WriteString("rcpt to: <" + toaddr + ">\r\n")
+		rw.WriteString("rcpt to:<" + toaddr + ">\r\n")
 		readStr(rw)
 	}
 	rw.WriteString("data\r\n")
 	readStr(rw)
 	rw.WriteString(data)
 	rw.WriteString("\r\n.\r\n")
+
 	retstr := readStr(rw)
 	conn.Close()
 	return "(oauth) " + retstr

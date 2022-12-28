@@ -1,19 +1,29 @@
 <?php
+$connectionok=false;
+
+
 function ts() {
 	print "[".date("D M H:i:s")."] ";
 }
 
 function readl($fh) {
+	global $connectionok;
 	stream_set_timeout($fh, 20);
 	do {
 		$l=fgets($fh);
 		ts(); print "< $l";
 	} while($l!==false && !feof($fh) && substr($l,0,2)!="x " && substr($l,0,2)!="+ ");
-	ts(); print "---\n";
+	$timed_out=stream_get_meta_data($fh)['timed_out'];
+	if($timed_out || /*($l===false) || */ feof($fh)) {
+		print "readl(): error\n";
+		$connectionok=false;
+	}
+	ts(); 
+	print "---\n";
 }
 
 function mainloop($config) {
-	global $cmd;
+	global $cmd, $connectionok;
 	while(true) {
 		ts(); print "Connecting to ".$config['host']."... \n";
 		$fh=stream_socket_client("tls://".$config['host']);
