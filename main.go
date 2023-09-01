@@ -88,7 +88,7 @@ func HdlCmd(r http.ResponseWriter, q *http.Request) {
 		query = "*/" + query
 	}
 
-	outstr := ListMessagesHTML(query, GetConf("Path"))
+	outstr := ListMessagesHTML(query, GetConf("Path"), q.FormValue("sort"))
 
 	fmt.Fprintf(r, outstr)
 }
@@ -136,7 +136,7 @@ func HdlRead(r http.ResponseWriter, q *http.Request) {
 		url := "/attachget?id=" + url.QueryEscape(id) + "&cid=" + url.QueryEscape(att.FileName)
 		url1 := url + "&mode=inline"
 		url2 := url + "&mode=attach"
-		fmt.Fprint(r, "<a href="+url1+" target=_new>"+att.FileName+"</a> ("+att.ContentType+") <a href="+url2+">[dl]</a><br>")
+		fmt.Fprint(r, "<a href="+url1+" target=_new>"+att.FileName+"</a> ("+att.ContentType+") <a href="+url2+" target=_new>[dl]</a><br>")
 	}
 
 	fmt.Fprint(r, "</div></div><div id=mailbody>")
@@ -290,6 +290,18 @@ func addAttachMessage(q *http.Request, boundary string) string {
 	return str
 }
 
+
+func split(s string, size int) string {
+	ss:=""
+    for len(s) > 0 {
+        if len(s) < size {
+            size = len(s)
+        }
+        ss, s = ss+s[:size]+"\r\n", s[size:]
+    }
+    return ss
+}
+
 func addAttach(r http.ResponseWriter, q *http.Request, suffix string, boundary string) string {
 	mpf, mpfh, er := q.FormFile("attach" + suffix)
 	if er != nil {
@@ -300,7 +312,7 @@ func addAttach(r http.ResponseWriter, q *http.Request, suffix string, boundary s
 		"Content-Disposition: attachment; filename=\"" + mpfh.Filename + "\"\r\n" +
 		"Content-Type: " + mpfh.Header.Get("Content-Type") + "; name=\"" + mpfh.Filename + "\"\r\n" +
 		"Content-Transfer-Encoding: base64\r\n\r\n" +
-		base64.StdEncoding.EncodeToString(d)
+		split(base64.StdEncoding.EncodeToString(d), 76)
 }
 
 func readStr(rw *bufio.ReadWriter) string {
@@ -449,7 +461,7 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 	boundary := "b" + fmt.Sprintf("%x", rand.Uint64())
 	sect, _ := Config.Section(identity+".smtp")
 	outId := sect.Options()
-	multipart := checkAttach(q, "attach1") || checkAttach(q, "attach2") || checkAttach(q, "attach3") || checkAttach(q, "attach4") || q.FormValue("attachMessage") != ""
+	multipart := checkAttach(q, "attach1") || checkAttach(q, "attach2") || checkAttach(q, "attach3") || checkAttach(q, "attach4") || checkAttach(q, "attach5") || checkAttach(q, "attach6") || q.FormValue("attachMessage") != ""
 	endheaders := "MIME-Version: 1.0\r\n" +
 		"Date: " + time.Now().Format(time.RFC1123Z) + "\r\n" +
 		"Message-ID: <" + fmt.Sprintf("%x", rand.Uint64()) +
@@ -505,6 +517,8 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 		addAttach(r, q, "2", boundary) +
 		addAttach(r, q, "3", boundary) +
 		addAttach(r, q, "4", boundary) +
+		addAttach(r, q, "5", boundary) +
+		addAttach(r, q, "6", boundary) +
 		addAttachMessage(q, boundary)
 
 	composeText = strings.Replace(composeText, identity+"\n", headerTop, 1)

@@ -40,7 +40,12 @@ function loadmsglist(query) {
 	updCmdModeIndicator();
 	hRows={};
 	document.getElementById("query").blur();
-	fetch("/cmd?q="+encodeURIComponent(query)).then(function(response) {
+	var n, sort='';
+	if((n=query.indexOf('%'))!=-1) {
+		sort=query.substring(n+1);
+		query=query.substring(0,n);
+	}
+	fetch("/cmd?q="+encodeURIComponent(query)+"&sort="+encodeURIComponent(sort)).then(function(response) {
 		response.text().then(function(txt) {
 			e.innerHTML=txt;
 			var rows=document.getElementsByClassName('msglistRow');
@@ -253,7 +258,7 @@ function registerEvtsrc() {
 			loadmsglist(document.getElementById("query").value); 
 		}
 		evtSrc.onerror=() => {
-			alert("idler error");
+			//alert("idler error");
 			location.reload(true);
 		}
 }

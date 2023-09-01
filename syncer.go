@@ -214,7 +214,7 @@ type htmlLine struct {
 	rHtml string
 }
 
-func ListMessagesHTML(path string, prepath string) string {
+func ListMessagesHTML(path string, prepath string, xsort string) string {
 	multiboxes := false
 	if strings.Index(path, "*") >= 0 {
 		multiboxes = true
@@ -241,6 +241,9 @@ func ListMessagesHTML(path string, prepath string) string {
 	} else {
 		qry=qry+" and a=?"
 		rows, _ = db.Query(qry, locmb, account)
+	}
+	if xsort != "" {
+		qry=qry+" order by "+xsort
 	}
 
 	var ie IndexEntry
@@ -297,7 +300,9 @@ func ListMessagesHTML(path string, prepath string) string {
 		}
 	}
 	s := ""
-	sort.Slice(lines, func(i int, j int) bool { return lines[i].rTime > lines[j].rTime })
+	if xsort == "" {
+		sort.Slice(lines, func(i int, j int) bool { return lines[i].rTime > lines[j].rTime })
+	}
 	for _, l := range lines {
 		s = s + l.rHtml
 	}
