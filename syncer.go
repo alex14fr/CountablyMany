@@ -237,14 +237,19 @@ func ListMessagesHTML(path string, prepath string, xsort string) string {
 		qry=strings.Replace(qry,",f",",t",-1)
 	}
 	if account == "*" {
+		if xsort != "" {
+			qry=qry+" order by "+xsort
+		}
 		rows, _ = db.Query(qry, locmb)
 	} else {
 		qry=qry+" and a=?"
+		if xsort != "" {
+			qry=qry+" order by "+xsort
+		}
 		rows, _ = db.Query(qry, locmb, account)
 	}
-	if xsort != "" {
-		qry=qry+" order by "+xsort
-	}
+
+	fmt.Println("QUERY  "+qry)
 
 	var ie IndexEntry
 
@@ -301,6 +306,7 @@ func ListMessagesHTML(path string, prepath string, xsort string) string {
 	}
 	s := ""
 	if xsort == "" {
+		fmt.Println("SORTING BY TIME")
 		sort.Slice(lines, func(i int, j int) bool { return lines[i].rTime > lines[j].rTime })
 	}
 	for _, l := range lines {
