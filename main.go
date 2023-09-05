@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/base64"
+	"encoding/binary"
 	"fmt"
 	"github.com/jhillyerd/enmime"
 	"github.com/alyu/configparser"
@@ -16,6 +17,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -458,15 +460,16 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 	var identity string
 	fmt.Sscanf(composeText, "%s\n", &identity)
 
-	boundary := "b" + fmt.Sprintf("%x", rand.Uint64())
+	boundary := "b" + strconv.FormatUint(rand.Uint64(), 36) + strconv.FormatUint(rand.Uint64() >> 32, 36)
 	sect, _ := Config.Section(identity+".smtp")
 	outId := sect.Options()
 	multipart := checkAttach(q, "attach1") || checkAttach(q, "attach2") || checkAttach(q, "attach3") || checkAttach(q, "attach4") || checkAttach(q, "attach5") || checkAttach(q, "attach6") || q.FormValue("attachMessage") != ""
+	ss := sha256.Sum256([]byte(composeText))
+	sss := ss[:]
 	endheaders := "MIME-Version: 1.0\r\n" +
 		"Date: " + time.Now().Format(time.RFC1123Z) + "\r\n" +
-		"Message-ID: <" + fmt.Sprintf("%x", rand.Uint64()) +
-		fmt.Sprintf("%x", sha256.Sum256([]byte(composeText))) +
-		fmt.Sprintf("%x", rand.Uint64()) +
+		"Message-ID: <" + strconv.FormatUint(rand.Uint64(), 36) + "." + 
+		strconv.FormatUint(binary.LittleEndian.Uint64(sss), 36) +
 		"@" + strings.Split(outId["FromAddr"], "@")[1] + ">\r\n" +
 		"Content-Transfer-Encoding: 8bit\r\n" +
 		"Content-Type: "

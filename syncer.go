@@ -278,8 +278,8 @@ func ListMessagesHTML(path string, prepath string, xsort string) string {
 				parsed, err = time.Parse("_2 Jan 2006 15:04:05 -0700", ie.D)
 			}
 			dateLbl := parsed.Format("02/01/06")
-			dateH := parsed.Format("15:04")
 			if dateLbl == dateND {
+				dateH := parsed.Format("15:04")
 				dateLbl = dateH
 			}
 			from := ie.F
@@ -513,6 +513,7 @@ func (imc *IMAPConn) MoveInMailbox(account string, localmbname string) error {
 	fmt.Println("performing moves in ", path, "...")
 	mboxselected := false
 	finfs, _ := ioutil.ReadDir(path)
+	doExpunge := false
 	for _, finf := range finfs {
 		if !finf.IsDir() {
 			if !mboxselected {
@@ -525,8 +526,9 @@ func (imc *IMAPConn) MoveInMailbox(account string, localmbname string) error {
 			if strings.Index(string(dest), "KILL") == 0 {
 				imc.WriteLine("x uid store " + finf.Name() + " flags \\Deleted")
 				imc.ReadLine("x ")
-				imc.WriteLine("x expunge")
-				imc.ReadLine("x ")
+				doExpunge=true
+				//imc.WriteLine("x expunge")
+				//imc.ReadLine("x ")
 				fname := GetConf("Path") + separ + account + separ + localmbname + separ + finf.Name()
 				fmt.Println("removing ", fname)
 				err := os.Remove(fname)
@@ -550,8 +552,9 @@ func (imc *IMAPConn) MoveInMailbox(account string, localmbname string) error {
 					olduids := strconv.Itoa(int(olduid))
 					imc.WriteLine("x uid store " + olduids + " flags \\Deleted")
 					imc.ReadLine("x OK")
-					imc.WriteLine("x expunge")
-					imc.ReadLine("x OK")
+					doExpunge=true
+					//imc.WriteLine("x expunge")
+					//imc.ReadLine("x OK")
 					fmt.Println("killed old")
 				}
 				newuids := strconv.Itoa(int(uid))
@@ -567,6 +570,10 @@ func (imc *IMAPConn) MoveInMailbox(account string, localmbname string) error {
 			}
 			os.Remove(path + separ + finf.Name())
 		}
+	}
+	if doExpunge {
+		imc.WriteLine("x expunge")
+		imc.ReadLine("x ")
 	}
 	return nil
 }
