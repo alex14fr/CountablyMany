@@ -140,6 +140,7 @@ func Login(acc map[string]string) (imapconn *IMAPConn, err error) {
 		imapconn.WriteLine("x login " + acc["User"] + " " + acc["Pass"])
 	}
 	imapconn.ReadLine("x ")
+	imapconn.WriteLine("x getquotaroot inbox")
 	return
 }
 

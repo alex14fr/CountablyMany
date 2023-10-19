@@ -357,7 +357,7 @@ func Sendmail(host string, user string, pass string, from string, to []string, d
 	readStr(rw)
 	rw.WriteString(base64.StdEncoding.EncodeToString([]byte(pass)) + "\r\n")
 	readStr(rw)
-	rw.WriteString("MAIL FROM:<" + from + ">\r\n")
+	rw.WriteString("MAIL FROM:<" + from + "> BODY=8BITMIME\r\n")
 	readStr(rw)
 	for _, toaddr := range to {
 		rw.WriteString("RCPT TO:<" + toaddr + ">\r\n")
@@ -457,6 +457,24 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 	composeText := q.FormValue("compose")
 	composeText = strings.ReplaceAll(composeText, "\r", "")
 
+	var toaddrlist, ccaddrlist string
+	fmt.Sscanf(strings.Split(composeText, "To: ")[1], "%s\n", &toaddrlist)
+	toaddrAngle := ""
+	for _,rcpaddr := range toaddr {
+		toaddrAngle=toAddrAngle+"<"+rcpaddr+">, "
+	}
+	toaddrAngle=toaddrAngle[:len(toaddrAngle)-2]
+	spltCC:=strings.Split(composeText, "Cc: ")
+	if(len(spltCC)>1) {
+		fmt.Sscanf(spltCC[1], "%s\r\n", &ccaddrlist)
+	} else {
+		ccaddrlist=""
+	}
+	if ccaddrlist != "" {
+		toaddrlist = toaddrlist + "," + ccaddrlist
+	}
+	toaddr := strings.Split(toaddrlist, ",")
+
 	var identity string
 	fmt.Sscanf(composeText, "%s\n", &identity)
 
@@ -467,7 +485,7 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 	ss := sha256.Sum256([]byte(composeText))
 	sss := ss[:]
 	endheaders := "MIME-Version: 1.0\r\n" +
-		"Date: " + time.Now().Format(time.RFC1123Z) + "\r\n" +
+		"Date: " + time.Now().Format("Mon, 02 Jan 2006 15:04:05 -0700") + "\r\n" +
 		"Message-ID: <" + strconv.FormatUint(rand.Uint64(), 36) + "." + 
 		strconv.FormatUint(binary.LittleEndian.Uint64(sss), 36) +
 		"@" + strings.Split(outId["FromAddr"], "@")[1] + ">\r\n" +
@@ -529,18 +547,6 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 		composeText += "\r\n--" + boundary + "--\r\n"
 	}
 
-	var toaddrlist, ccaddrlist string
-	fmt.Sscanf(strings.Split(composeText, "To: ")[1], "%s\r\n", &toaddrlist)
-	spltCC:=strings.Split(composeText, "Cc: ")
-	if(len(spltCC)>1) {
-		fmt.Sscanf(spltCC[1], "%s\r\n", &ccaddrlist)
-	} else {
-		ccaddrlist=""
-	}
-	if ccaddrlist != "" {
-		toaddrlist = toaddrlist + "," + ccaddrlist
-	}
-	toaddr := strings.Split(toaddrlist, ",")
 	var status string
 	if token,tokenpresent:=outId["GMailToken"];tokenpresent {
 		fmt.Println("Sendmail using OAuth....")
