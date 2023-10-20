@@ -1,0 +1,3 @@
+CGO_CFLAGS=-D_LARGEFILE64_SOURCE go build -v
+strip CountablyMany
+
