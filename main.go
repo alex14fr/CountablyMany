@@ -359,6 +359,7 @@ func Sendmail(host string, user string, pass string, from string, to []string, d
 	readStr(rw)
 	rw.WriteString("MAIL FROM:<" + from + "> BODY=8BITMIME\r\n")
 	readStr(rw)
+	fmt.Println("RCPT TO = ", to)
 	for _, toaddr := range to {
 		rw.WriteString("RCPT TO:<" + toaddr + ">\r\n")
 		readStr(rw)
@@ -416,6 +417,7 @@ func Sendmail_OAuth(host string, user string, token string, from string, to []st
 	readStr(rw)
 	rw.WriteString("mail from:<" + from + ">\r\n")
 	readStr(rw)
+	fmt.Println("RCPT TO = ", to)
 	for _, toaddr := range to {
 		rw.WriteString("rcpt to:<" + toaddr + ">\r\n")
 		readStr(rw)
@@ -456,24 +458,6 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 
 	composeText := q.FormValue("compose")
 	composeText = strings.ReplaceAll(composeText, "\r", "")
-
-	var toaddrlist, ccaddrlist string
-	fmt.Sscanf(strings.Split(composeText, "To: ")[1], "%s\n", &toaddrlist)
-	toaddrAngle := ""
-	for _,rcpaddr := range toaddr {
-		toaddrAngle=toAddrAngle+"<"+rcpaddr+">, "
-	}
-	toaddrAngle=toaddrAngle[:len(toaddrAngle)-2]
-	spltCC:=strings.Split(composeText, "Cc: ")
-	if(len(spltCC)>1) {
-		fmt.Sscanf(spltCC[1], "%s\r\n", &ccaddrlist)
-	} else {
-		ccaddrlist=""
-	}
-	if ccaddrlist != "" {
-		toaddrlist = toaddrlist + "," + ccaddrlist
-	}
-	toaddr := strings.Split(toaddrlist, ",")
 
 	var identity string
 	fmt.Sscanf(composeText, "%s\n", &identity)
@@ -525,6 +509,19 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 		}
 	}
 	composeText=composeText+endheaders+after
+
+	var toaddrlist, ccaddrlist string
+	fmt.Sscanf(strings.Split(composeText, "To: ")[1], "%s\n", &toaddrlist)
+	spltCC:=strings.Split(composeText, "Cc: ")
+	if(len(spltCC)>1) {
+		fmt.Sscanf(spltCC[1], "%s\r\n", &ccaddrlist)
+	} else {
+		ccaddrlist=""
+	}
+	if ccaddrlist != "" {
+		toaddrlist = toaddrlist + "," + ccaddrlist
+	}
+	toaddr := strings.Split(toaddrlist, ",")
 
 	from := outId["FromAddr"]
 	fromName := outId["FromName"]
