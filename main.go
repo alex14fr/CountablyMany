@@ -458,6 +458,7 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 
 	composeText := q.FormValue("compose")
 	composeText = strings.ReplaceAll(composeText, "\r", "")
+	headersText := strings.Split(composeText, "@endheaders")[0]
 
 	var identity string
 	fmt.Sscanf(composeText, "%s\n", &identity)
@@ -511,8 +512,8 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 	composeText=composeText+endheaders+after
 
 	var toaddrlist, ccaddrlist string
-	fmt.Sscanf(strings.Split(composeText, "To: ")[1], "%s\n", &toaddrlist)
-	spltCC:=strings.Split(composeText, "Cc: ")
+	fmt.Sscanf(strings.Split(headersText, "To: ")[1], "%s\n", &toaddrlist)
+	spltCC:=strings.Split(headersText, "Cc: ")
 	if(len(spltCC)>1) {
 		fmt.Sscanf(spltCC[1], "%s\r\n", &ccaddrlist)
 	} else {
