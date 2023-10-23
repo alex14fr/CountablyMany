@@ -444,7 +444,7 @@ func (imc *IMAPConn) FetchNewInMailbox(account string, localmbname string, fromU
 			fmt.Println("add to fetch cntt=",cntt," uid=",uidToFetch[i])
 			i++
 		}
-		//os.Remove(GetConf("Path")+separ+account+separ+localmbname+separ+"tofetch")
+		os.Remove(GetConf("Path")+separ+account+separ+localmbname+separ+"tofetch")
 	}
 	nToFetch:=i
 	i=0
