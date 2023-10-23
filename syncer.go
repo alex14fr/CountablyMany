@@ -436,16 +436,28 @@ func (imc *IMAPConn) FetchNewInMailbox(account string, localmbname string, fromU
 			i++
 		}
 	}
+	cnt, err := os.ReadFile(GetConf("Path")+separ+account+separ+localmbname+separ+"tofetch")
+	if err==nil {
+		cnts := strings.Split(string(cnt), "\n")
+		for _, cntt := range cnts {
+			fmt.Sscanf(cntt, "%d", &uidToFetch[i])
+			fmt.Println("add to fetch cntt=",cntt," uid=",uidToFetch[i])
+			i++
+		}
+		//os.Remove(GetConf("Path")+separ+account+separ+localmbname+separ+"tofetch")
+	}
 	nToFetch:=i
 	i=0
 	for i<nToFetch {
 		var uid, leng int
 		fmt.Println("fetching ",i,"/ ",nToFetch-1,"...\n")
 		imc.WriteLine(randomtag + " uid fetch " + strconv.Itoa(int(uidToFetch[i])) + " rfc822")
-		s, _ := imc.ReadLine("")
+		s, _ := imc.ReadLine("* ")
+		/*
 		if strings.Index(s, randomtag) == 0 {
+			fmt.Println("?!! beaking")
 			break
-		}
+		} */
 		fmt.Sscanf(s, "* %d FETCH (UID %d RFC822 {%d", &d, &uid, &leng)
 		fmt.Println("got uid:", uid, " length:", leng)
 		content := make([]byte, leng)

@@ -101,8 +101,9 @@ function main_srv($config) {
 		$disklist=list_disk($config, $local);
 		print "on disk   : ".count($disklist)."\n";
 	//	print_r($disklist);
-		print prune_db($db, $config, $local, array_diff($dblist, $srvlist))."\n";
-		print prune_disk($config, $local, array_diff($disklist, $srvlist))."\n";
+		prune_db($db, $config, $local, array_diff($dblist, $srvlist))."\n";
+		prune_disk($config, $local, array_diff($disklist, $srvlist))."\n";
+		file_put_contents($maildir."/".$config['cmAcc']."/".$local."/tofetch", join("\n", array_diff($srvlist, $disklist)));
 	}
 }
 
