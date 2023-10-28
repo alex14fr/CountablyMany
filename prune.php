@@ -25,7 +25,7 @@ function list_srv($fh, $config, $mbox) {
 
 function list_db($db, $config, $mbox) {
 	$ret=[];
-	$res=$db->query("SELECT u FROM messages WHERE a='".$db->escapeString($config['cmAcc'])."' and m='".$db->escapeString($mbox)."'");
+	$res=$db->query("SELECT u FROM messages WHERE a='".$db->escapeString($config['cmAcc'])."' and m='".$db->escapeString($mbox)."' ORDER BY u");
 	while($a=$res->fetchArray(SQLITE3_NUM)) $ret[]=$a[0];
 	return($ret);
 }
@@ -39,9 +39,13 @@ function prune_db($db, $config, $mbox, $list) {
 	return($qry);
 }
 
+function mkdir_if_notexist($dir) {
+	return "[ -d \"$dir\" ] || mkdir \"$dir\"; ";
+}
+
 function prune_disk($config, $mbox, $list) {
 	global $pruned, $maildir;
-	$cmd="mkdir $pruned; mkdir $pruned/".$config['cmAcc']."; mkdir $pruned/".$config['cmAcc']."/".$mbox."; ";
+	$cmd=mkdir_if_notexist($pruned).mkdir_if_notexist($pruned."/".$config['cmAcc']).mkdir_if_notexist($pruned."/".$config['cmAcc']."/".$mbox);
 	foreach($list as $id) {
 		$cmd.="mv $maildir/".$config['cmAcc']."/$mbox/$id $pruned/".$config['cmAcc']."/$mbox/; ";
 	}
@@ -59,13 +63,15 @@ function isnum($s) {
 
 function list_disk($config, $mbox) {
 	global $maildir;
-	$d=opendir($maildir."/".$config['cmAcc']."/".$mbox);
+	$mailname=$maildir."/".$config['cmAcc']."/".$mbox;
+	$d=opendir($mailname);
 	$ret=[];
-	while($e=readdir($d)) {
+	while(($e=readdir($d))!==false) {
 		if(isnum($e)) {
 			$ret[]=$e;
 		}
 	}
+	//sort($ret);
 	return($ret);
 }
 
@@ -82,7 +88,7 @@ function main_srv($config) {
 	if(isset($config['xoauth2_cmd']) && !isset($config['xoauth2_enc_token'])) {
 		print "Fetching xoauth2 token...";
 		$config['xoauth2_enc_token']=base64_encode("user=".$config['login']."\x01auth=Bearer ".system($config['xoauth2_cmd'])."\x01\x01");
-		print $config['xoauth2_enc_token']."\n";
+		//print $config['xoauth2_enc_token']."\n";
 	}
 	if(isset($config['xoauth2_enc_token'])) {
 		fwrite($fh, "x authenticate xoauth2 ".$config['xoauth2_enc_token']."\r\n");
@@ -93,6 +99,7 @@ function main_srv($config) {
 	readl($fh);
 
 	foreach($config['mboxes'] as $local=>$remote) {
+		print "$local ($remote):\n";
 		$srvlist=list_srv($fh, $config, $remote);
 		print "on server : ".count($srvlist)."\n";
 		$dblist=list_db($db, $config, $local);
