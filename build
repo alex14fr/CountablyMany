@@ -1,3 +1,4 @@
-CGO_CFLAGS=-D_LARGEFILE64_SOURCE go build -v
+#CGO_CFLAGS=-D_LARGEFILE64_SOURCE go build -v
+CGO_CFLAGS=-D_LARGEFILE64_SOURCE go build -ldflags="-extldflags=-static" -tags netgo -v
 strip CountablyMany
 

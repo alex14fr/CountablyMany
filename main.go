@@ -1,29 +1,29 @@
 package main
 
 import (
-	"database/sql"
-	_ "github.com/mattn/go-sqlite3"
 	"bufio"
 	"crypto/sha256"
 	"crypto/tls"
+	"database/sql"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
-	"github.com/jhillyerd/enmime"
 	"github.com/alyu/configparser"
+	"github.com/jhillyerd/enmime"
+	_ "github.com/mattn/go-sqlite3"
 	"html"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
-	"encoding/json"
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
-	"sort"
-//	"github.com/pkg/profile"
+	// "github.com/pkg/profile"
 )
 
 var Mailboxes (map[string]map[string]string)
@@ -60,12 +60,12 @@ func HdlRes(r http.ResponseWriter, q *http.Request) {
 var Config (*configparser.Configuration)
 
 func GetConfS(se string, k string) string {
-	sec,_:=Config.Section(se)
+	sec, _ := Config.Section(se)
 	return sec.ValueOf(k)
 }
 
 func GetConf(k string) string {
-	return GetConfS("all",k)
+	return GetConfS("all", k)
 }
 
 /*
@@ -85,28 +85,28 @@ func HdlFolder(r http.ResponseWriter, q *http.Request) {
 */
 
 func Mkdb() {
-	os.Remove(GetConf("Path")+separ+"Index.sqlite")	
+	os.Remove(GetConf("Path") + separ + "Index.sqlite")
 	var err error
 	db, err = sql.Open("sqlite3", GetConf("Path")+separ+"Index.sqlite")
 	if err != nil {
-		fmt.Println("error : "+err.Error())
+		fmt.Println("error : " + err.Error())
 		return
 	}
 	db.Exec("pragma journal_mode=wal; CREATE TABLE messages(u integer, a text, m text, f text, s text, d text, i text, t text, ut integer); CREATE INDEX idx1 on messages (m,a); CREATE INDEX idx2 on messages (i,a,m);")
 	for acc, curacc := range Mailboxes {
 		for locmb, _ := range curacc {
-			path := GetConf("Path")+separ+acc+separ+locmb
-			fmt.Println("path="+path)
+			path := GetConf("Path") + separ + acc + separ + locmb
+			fmt.Println("path=" + path)
 			dirents, _ := os.ReadDir(path)
 			for _, dirent := range dirents {
 				uid, err := strconv.ParseInt(dirent.Name(), 10, 0)
 				if err == nil {
-					filename:=path+separ+dirent.Name()
-					fmt.Println("inserting "+filename)
-					ie:=MakeIEFromFile(filename)
-					ie.U=uint32(uid)
-					ie.A=acc
-					ie.M=locmb
+					filename := path + separ + dirent.Name()
+					fmt.Println("inserting " + filename)
+					ie := MakeIEFromFile(filename)
+					ie.U = uint32(uid)
+					ie.A = acc
+					ie.M = locmb
 					dbAppend(ie)
 				}
 			}
@@ -164,7 +164,7 @@ func HdlRead(r http.ResponseWriter, q *http.Request) {
 	id := q.FormValue("id")
 	file, fname := GetMessageFile(r, q)
 
-	if q.FormValue("source")!="" {
+	if q.FormValue("source") != "" {
 		r.Header().Set("Content-type", "text/plain")
 		http.ServeFile(r, q, fname)
 		return
@@ -176,14 +176,14 @@ func HdlRead(r http.ResponseWriter, q *http.Request) {
 		return
 	}
 
-	if q.FormValue("html")!="" {
+	if q.FormValue("html") != "" {
 		r.Header().Set("Content-type", "text/html; charset=utf8")
 		r.Header().Set("Content-security-policy", "default-src 'none'")
 
-		hdrs := "<table><tr><td><b>From</b><td>"+html.EscapeString(mail.GetHeader("From"))+
-		"<tr><td><b>To</b><td>"+html.EscapeString(mail.GetHeader("To")+", "+mail.GetHeader("Cc"))+
-		"<tr><td><b>Subject</b><td>"+html.EscapeString(mail.GetHeader("Subject"))+
-		"<tr><td><b>Date</b><td>"+html.EscapeString(mail.GetHeader("Date"))+"</table><hr>"
+		hdrs := "<table><tr><td><b>From</b><td>" + html.EscapeString(mail.GetHeader("From")) +
+			"<tr><td><b>To</b><td>" + html.EscapeString(mail.GetHeader("To")+", "+mail.GetHeader("Cc")) +
+			"<tr><td><b>Subject</b><td>" + html.EscapeString(mail.GetHeader("Subject")) +
+			"<tr><td><b>Date</b><td>" + html.EscapeString(mail.GetHeader("Date")) + "</table><hr>"
 
 		htmlmail := string(mail.HTML)
 		if htmlmail == "" {
@@ -191,10 +191,10 @@ func HdlRead(r http.ResponseWriter, q *http.Request) {
 			htmlmail = strings.ReplaceAll(htmlmail, "\n", "<br>")
 		}
 		htmlmail = strings.ReplaceAll(htmlmail, "<base", "<ignore-base")
-		r.Write([]byte(hdrs+htmlmail))
+		r.Write([]byte(hdrs + htmlmail))
 		return
 	}
-		
+
 	fmt.Fprint(r, "<div id=headers><table><tr><td><b>From</b><td>"+html.EscapeString(mail.GetHeader("From"))+
 		"<tr><td><b>To</b><td>"+html.EscapeString(mail.GetHeader("To")+", "+mail.GetHeader("Cc"))+
 		"<tr><td><b>Subject</b><td>"+html.EscapeString(mail.GetHeader("Subject"))+
@@ -278,7 +278,7 @@ func HdlReplytemplate(r http.ResponseWriter, q *http.Request) {
 	for _, section := range sections {
 		dfltFor := section.ValueOf("DefaultFor")
 		if strings.Index(dfltFor, acc) >= 0 {
-			replyidentity = strings.Replace(section.Name(),".smtp","",-1)
+			replyidentity = strings.Replace(section.Name(), ".smtp", "", -1)
 			break
 		}
 	}
@@ -291,16 +291,15 @@ func HdlReplytemplate(r http.ResponseWriter, q *http.Request) {
 	}
 	fmt.Fprint(r, "References: "+mail.GetHeader("Message-ID")+" "+mail.GetHeader("References")+"\r\n")
 
-	fmt.Fprint(r,"@endheaders\r\n\r\n\r\n")
-
+	fmt.Fprint(r, "@endheaders\r\n\r\n\r\n")
 
 	if !fwdMode && !fwdMode2 {
 		fmt.Fprint(r, "\r\n--- Original message ---\r\n"+
-		"From: "+mail.GetHeader("From")+"\r\n"+
-		"To: "+mail.GetHeader("To")+"\r\n"+
-		"Cc: "+mail.GetHeader("Cc")+"\r\n"+
-		"Subject: "+mail.GetHeader("Subject")+"\r\n"+
-		"Date: "+mail.GetHeader("Date")+"\r\n\r\n"+mailtxt)
+			"From: "+mail.GetHeader("From")+"\r\n"+
+			"To: "+mail.GetHeader("To")+"\r\n"+
+			"Cc: "+mail.GetHeader("Cc")+"\r\n"+
+			"Subject: "+mail.GetHeader("Subject")+"\r\n"+
+			"Date: "+mail.GetHeader("Date")+"\r\n\r\n"+mailtxt)
 	}
 
 	if fwdMode {
@@ -359,16 +358,15 @@ func addAttachMessage(q *http.Request, boundary string) string {
 	return str
 }
 
-
 func split(s string, size int) string {
-	ss:=""
-    for len(s) > 0 {
-        if len(s) < size {
-            size = len(s)
-        }
-        ss, s = ss+s[:size]+"\r\n", s[size:]
-    }
-    return ss
+	ss := ""
+	for len(s) > 0 {
+		if len(s) < size {
+			size = len(s)
+		}
+		ss, s = ss+s[:size]+"\r\n", s[size:]
+	}
+	return ss
 }
 
 func addAttach(r http.ResponseWriter, q *http.Request, suffix string, boundary string) string {
@@ -453,34 +451,34 @@ func Sendmail_OAuth(host string, user string, token string, from string, to []st
 
 	var w string
 
-	if oauthtok,tokcached:=oauthCache[host];tokcached && oauthTimestamp[host]>time.Now().Unix()-3000 {
+	if oauthtok, tokcached := oauthCache[host]; tokcached && oauthTimestamp[host] > time.Now().Unix()-3000 {
 		fmt.Println("reusing cached oauth token")
-		w=oauthtok
+		w = oauthtok
 	} else {
 		values := url.Values{}
-		values.Set("client_id",GetConf("GMailClientId"))
-		values.Set("client_secret",GetConf("GMailClientSecret"))
-		values.Set("grant_type","refresh_token")
-		values.Set("refresh_token",token)
-		resp, err := http.PostForm("https://oauth2.googleapis.com/token",values)
+		values.Set("client_id", GetConf("GMailClientId"))
+		values.Set("client_secret", GetConf("GMailClientSecret"))
+		values.Set("grant_type", "refresh_token")
+		values.Set("refresh_token", token)
+		resp, err := http.PostForm("https://oauth2.googleapis.com/token", values)
 
-		if err!=nil {
-			retstr:=fmt.Sprintf("error refreshing token", err)
+		if err != nil {
+			retstr := fmt.Sprintf("error refreshing token", err)
 			return retstr
-		} 
+		}
 		var v map[string]interface{}
-		decoder:=json.NewDecoder(resp.Body)
-		if err:=decoder.Decode(&v);err!=nil {
-			retstr:=fmt.Sprintf("2error parsing json", err)
+		decoder := json.NewDecoder(resp.Body)
+		if err := decoder.Decode(&v); err != nil {
+			retstr := fmt.Sprintf("2error parsing json", err)
 			return retstr
-		} 
-		w=fmt.Sprintf("user=%s\001auth=Bearer %s\001\001", user, v["access_token"].(string))
-		w=base64.StdEncoding.EncodeToString([]byte(w))
-		oauthCache[host]=w
-		oauthTimestamp[host]=time.Now().Unix()
+		}
+		w = fmt.Sprintf("user=%s\001auth=Bearer %s\001\001", user, v["access_token"].(string))
+		w = base64.StdEncoding.EncodeToString([]byte(w))
+		oauthCache[host] = w
+		oauthTimestamp[host] = time.Now().Unix()
 	}
 
-	rw.WriteString("auth xoauth2 "+w+"\r\n")
+	rw.WriteString("auth xoauth2 " + w + "\r\n")
 	readStr(rw)
 	rw.WriteString("mail from:<" + from + ">\r\n")
 	readStr(rw)
@@ -500,19 +498,19 @@ func Sendmail_OAuth(host string, user string, token string, from string, to []st
 }
 
 func mimeQPEncode(s string) string {
-	b:=[]byte(s)
-	nonprintable:=false
-	r:=""
-	for _,x:=range(b) {
-		if(x>31 && x<128) {
-			r=r+fmt.Sprintf("%c",x)
+	b := []byte(s)
+	nonprintable := false
+	r := ""
+	for _, x := range b {
+		if x > 31 && x < 128 {
+			r = r + fmt.Sprintf("%c", x)
 		} else {
-			nonprintable=true
-			r=r+fmt.Sprintf("=%2X",x)
+			nonprintable = true
+			r = r + fmt.Sprintf("=%2X", x)
 		}
 	}
-	if(nonprintable) {
-		return "=?UTF-8?Q?"+r+"?="
+	if nonprintable {
+		return "=?UTF-8?Q?" + r + "?="
 	} else {
 		return r
 	}
@@ -530,15 +528,15 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 	var identity string
 	fmt.Sscanf(composeText, "%s\n", &identity)
 
-	boundary := "b" + strconv.FormatUint(rand.Uint64(), 36) + strconv.FormatUint(rand.Uint64() >> 32, 36)
-	sect, _ := Config.Section(identity+".smtp")
+	boundary := "b" + strconv.FormatUint(rand.Uint64(), 36) + strconv.FormatUint(rand.Uint64()>>32, 36)
+	sect, _ := Config.Section(identity + ".smtp")
 	outId := sect.Options()
 	multipart := checkAttach(q, "attach1") || checkAttach(q, "attach2") || checkAttach(q, "attach3") || checkAttach(q, "attach4") || checkAttach(q, "attach5") || checkAttach(q, "attach6") || q.FormValue("attachMessage") != ""
 	ss := sha256.Sum256([]byte(composeText))
 	sss := ss[:]
 	endheaders := "MIME-Version: 1.0\r\n" +
 		"Date: " + time.Now().Format("Mon, 02 Jan 2006 15:04:05 -0700") + "\r\n" +
-		"Message-ID: <" + strconv.FormatUint(rand.Uint64(), 36) + "." + 
+		"Message-ID: <" + strconv.FormatUint(rand.Uint64(), 36) + "." +
 		strconv.FormatUint(binary.LittleEndian.Uint64(sss), 36) +
 		"@" + strings.Split(outId["FromAddr"], "@")[1] + ">\r\n" +
 		"Content-Transfer-Encoding: 8bit\r\n" +
@@ -555,13 +553,13 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 
 	//composeText = strings.Replace(composeText, "@endheaders", endheaders, 1)
 	before, after, _ := strings.Cut(composeText, "@endheaders")
-	composeText=""
-	for _,header := range strings.Split(before,"\n") {
+	composeText = ""
+	for _, header := range strings.Split(before, "\n") {
 		headername, headerval, found := strings.Cut(header, ": ")
-		if(!found && header!="") {
-			composeText=composeText+header+"\n"
+		if !found && header != "" {
+			composeText = composeText + header + "\n"
 		}
-		if(headerval != "" && headerval != " " && headerval != "\r" && headerval != "\n") {
+		if headerval != "" && headerval != " " && headerval != "\r" && headerval != "\n" {
 			/*b:=new(strings.Builder)
 			qpw:=quotedprintable.NewWriter(b)
 			qpw.Write([]byte(headerval))
@@ -573,18 +571,18 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 				beginenc="=?utf8?Q?"
 				endenc="?="
 			} */
-			composeText=composeText+headername+": "+mimeQPEncode(headerval)+"\r\n" //beginenc+b.String()+endenc+"\r\n"
+			composeText = composeText + headername + ": " + mimeQPEncode(headerval) + "\r\n" //beginenc+b.String()+endenc+"\r\n"
 		}
 	}
-	composeText=composeText+endheaders+after
+	composeText = composeText + endheaders + after
 
 	var toaddrlist, ccaddrlist string
 	fmt.Sscanf(strings.Split(headersText, "To: ")[1], "%s\n", &toaddrlist)
-	spltCC:=strings.Split(headersText, "Cc: ")
-	if(len(spltCC)>1) {
+	spltCC := strings.Split(headersText, "Cc: ")
+	if len(spltCC) > 1 {
 		fmt.Sscanf(spltCC[1], "%s\r\n", &ccaddrlist)
 	} else {
-		ccaddrlist=""
+		ccaddrlist = ""
 	}
 	if ccaddrlist != "" {
 		toaddrlist = toaddrlist + "," + ccaddrlist
@@ -613,11 +611,11 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 	}
 
 	var status string
-	if token,tokenpresent:=outId["GMailToken"];tokenpresent {
+	if token, tokenpresent := outId["GMailToken"]; tokenpresent {
 		fmt.Println("Sendmail using OAuth....")
-		status=Sendmail_OAuth(outId["SMTPHost"],outId["SMTPUser"],token,from,toaddr,composeText)
+		status = Sendmail_OAuth(outId["SMTPHost"], outId["SMTPUser"], token, from, toaddr, composeText)
 	} else {
-		status=Sendmail(outId["SMTPHost"], outId["SMTPUser"], outId["SMTPPass"], from, toaddr, composeText)
+		status = Sendmail(outId["SMTPHost"], outId["SMTPUser"], outId["SMTPPass"], from, toaddr, composeText)
 	}
 	er := ioutil.WriteFile(outId["OutFolder"]+separ+boundary, []byte(composeText), 0600)
 	if er != nil {
@@ -632,11 +630,11 @@ func HdlResync(r http.ResponseWriter, q *http.Request) {
 		return
 	}
 	r.Header().Set("Cache-control", "no-store")
-	fmt.Println("Got resync")	
-	quickAcc:=q.FormValue("quickacc")
-	quickMbox:=q.FormValue("quickmbox")
-	if quickAcc!="" && quickMbox!="" {
-		fmt.Println("Quick resync "+quickAcc+"/"+quickMbox)
+	fmt.Println("Got resync")
+	quickAcc := q.FormValue("quickacc")
+	quickMbox := q.FormValue("quickmbox")
+	if quickAcc != "" && quickMbox != "" {
+		fmt.Println("Quick resync " + quickAcc + "/" + quickMbox)
 		SyncerQuick(quickAcc, quickMbox)
 	} else {
 		SyncerMain()
@@ -651,7 +649,7 @@ func HdlIdler(r http.ResponseWriter, q *http.Request) {
 	r.Header().Set("Content-type", "text/event-stream")
 	r.Header().Set("Cache-control", "no-store")
 	for true {
-		<- syncChan
+		<-syncChan
 		r.Write([]byte("data: newmsg\r\n\r\n"))
 		r.(http.Flusher).Flush()
 	}
@@ -661,39 +659,39 @@ func HdlTokens(r http.ResponseWriter, q *http.Request) {
 	if !HookAuth(r, q) {
 		return
 	}
-	r.Header().Set("Content-type","text/plain")
-	r.Header().Set("Content-disposition","inline")
-	fmt.Fprintln(r,oauthCache)
-	fmt.Fprintln(r,oauthTimestamp)
+	r.Header().Set("Content-type", "text/plain")
+	r.Header().Set("Content-disposition", "inline")
+	fmt.Fprintln(r, oauthCache)
+	fmt.Fprintln(r, oauthTimestamp)
 }
 
 func HdlAbook(r http.ResponseWriter, q *http.Request) {
 	if !HookAuth(r, q) {
 		return
 	}
-	r.Header().Set("Content-type","text/html; charset=utf8")
+	r.Header().Set("Content-type", "text/html; charset=utf8")
 	rows, _ := db.Query("select distinct f from messages")
 	var to string
-	addrs := make(sort.StringSlice,0)
+	addrs := make(sort.StringSlice, 0)
 	for rows.Next() {
 		rows.Scan(&to)
 		to = strings.ToLower(strings.ReplaceAll(to, "\"", ""))
 		to = strings.ReplaceAll(to, "  ", " ")
 		tosplit := strings.Split(to, "<")
-		if len(tosplit)>=2 {
+		if len(tosplit) >= 2 {
 			to = tosplit[1]
 		}
 		to = strings.ReplaceAll(to, ">", "")
-		if to != "" && strings.Index(to, "noreply")!=0 {
+		if to != "" && strings.Index(to, "noreply") != 0 {
 			i := sort.SearchStrings(addrs, to)
-			if i==len(addrs) || addrs[i]!=to {
+			if i == len(addrs) || addrs[i] != to {
 				addrs = append(addrs, to)
 				addrs.Sort()
 			}
 		}
 	}
 	for _, to := range addrs {
-		r.Write([]byte("<a href=\"javascript:navigator.clipboard.writeText('"+to+"')\">"+to+"</a><br>"))
+		r.Write([]byte("<a href=\"javascript:navigator.clipboard.writeText('" + to + "')\">" + to + "</a><br>"))
 	}
 	r.Write([]byte("]"))
 
@@ -704,28 +702,28 @@ func main() {
 	//defer profile.Start().Stop()
 	separ = string(filepath.Separator)
 	var err error
-	Config,err=configparser.Read("CountablyMany.ini")
-	if err!=nil {
+	Config, err = configparser.Read("CountablyMany.ini")
+	if err != nil {
 		fmt.Println("error reading conf file")
 		return
 	}
 	sections, _ := Config.Find(".imap$")
-	Mailboxes=make(map[string](map[string]string))
+	Mailboxes = make(map[string](map[string]string))
 	for _, section := range sections {
-		acc:=strings.Replace(section.Name(),".imap","",-1)
-		Mailboxes[acc]=make(map[string]string)
-		for _,mbxdef := range strings.Split(section.ValueOf("Mailboxes")," ") {
-			mbxdefsplt:=strings.Split(mbxdef,"=")
-			Mailboxes[acc][mbxdefsplt[0]]=mbxdefsplt[1]
+		acc := strings.Replace(section.Name(), ".imap", "", -1)
+		Mailboxes[acc] = make(map[string]string)
+		for _, mbxdef := range strings.Split(section.ValueOf("Mailboxes"), " ") {
+			mbxdefsplt := strings.Split(mbxdef, "=")
+			Mailboxes[acc][mbxdefsplt[0]] = mbxdefsplt[1]
 		}
 	}
-	if(len(os.Args)>1 && os.Args[1]=="mkdb") {
+	if len(os.Args) > 1 && os.Args[1] == "mkdb" {
 		Mkdb()
 		return
 	}
-	syncChan=make(chan int)
-	oauthCache=make(map[string]string)
-	oauthTimestamp=make(map[string]int64)
+	syncChan = make(chan int)
+	oauthCache = make(map[string]string)
+	oauthTimestamp = make(map[string]int64)
 	SyncerMkdirs()
 	go SyncerMain()
 	http.HandleFunc("/", HdlRes)
