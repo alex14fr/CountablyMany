@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"sort"
 //	"github.com/pkg/profile"
 )
 
@@ -179,17 +180,22 @@ func HdlRead(r http.ResponseWriter, q *http.Request) {
 		r.Header().Set("Content-type", "text/html; charset=utf8")
 		r.Header().Set("Content-security-policy", "default-src 'none'")
 
+		hdrs := "<table><tr><td><b>From</b><td>"+html.EscapeString(mail.GetHeader("From"))+
+		"<tr><td><b>To</b><td>"+html.EscapeString(mail.GetHeader("To")+", "+mail.GetHeader("Cc"))+
+		"<tr><td><b>Subject</b><td>"+html.EscapeString(mail.GetHeader("Subject"))+
+		"<tr><td><b>Date</b><td>"+html.EscapeString(mail.GetHeader("Date"))+"</table><hr>"
+
 		htmlmail := string(mail.HTML)
 		if htmlmail == "" {
 			htmlmail = string(mail.Text)
 			htmlmail = strings.ReplaceAll(htmlmail, "\n", "<br>")
 		}
 		htmlmail = strings.ReplaceAll(htmlmail, "<base", "<ignore-base")
-		r.Write([]byte(htmlmail))
+		r.Write([]byte(hdrs+htmlmail))
 		return
 	}
 		
-	fmt.Fprint(r, "<div id=headers><table><tr><td><b>From</b><td>"+mail.GetHeader("From")+
+	fmt.Fprint(r, "<div id=headers><table><tr><td><b>From</b><td>"+html.EscapeString(mail.GetHeader("From"))+
 		"<tr><td><b>To</b><td>"+html.EscapeString(mail.GetHeader("To")+", "+mail.GetHeader("Cc"))+
 		"<tr><td><b>Subject</b><td>"+html.EscapeString(mail.GetHeader("Subject"))+
 		"<tr><td><b>Date</b><td>"+html.EscapeString(mail.GetHeader("Date"))+"</table>")
@@ -284,14 +290,18 @@ func HdlReplytemplate(r http.ResponseWriter, q *http.Request) {
 		fmt.Fprint(r, "In-reply-to: "+mail.GetHeader("Message-ID")+"\r\n")
 	}
 	fmt.Fprint(r, "References: "+mail.GetHeader("Message-ID")+" "+mail.GetHeader("References")+"\r\n"+
-		"@endheaders\r\n"+
-		"\r\n\r\n\r\n"+
-		"--- Original message ---\r\n"+
+		"@endheaders\r\n\r\n\r\n"
+
+
+	if !fwdMode && !fwdMode2 {
+		fmt.Fprint(r, "\r\n--- Original message ---\r\n"+
 		"From: "+mail.GetHeader("From")+"\r\n"+
 		"To: "+mail.GetHeader("To")+"\r\n"+
 		"Cc: "+mail.GetHeader("Cc")+"\r\n"+
 		"Subject: "+mail.GetHeader("Subject")+"\r\n"+
 		"Date: "+mail.GetHeader("Date")+"\r\n\r\n"+mailtxt)
+	}
+
 	if fwdMode {
 		fmt.Fprint(r, "\r\n@attachments "+id)
 	}
@@ -343,6 +353,8 @@ func addAttachMessage(q *http.Request, boundary string) string {
 		"Content-disposition: inline; filename=\"forwarded message.eml\"\r\n" +
 		"Content-type: message/rfc822; name=\"forwarded message.eml\"\r\n\r\n" +
 		string(filc)
+
+	fmt.Println("addAttachMessage : ", att, filc)
 	return str
 }
 
@@ -652,6 +664,37 @@ func HdlTokens(r http.ResponseWriter, q *http.Request) {
 	r.Header().Set("Content-disposition","inline")
 	fmt.Fprintln(r,oauthCache)
 	fmt.Fprintln(r,oauthTimestamp)
+}
+
+func HdlAbook(r http.ResponseWriter, q *http.Request) {
+	if !HookAuth(r, q) {
+		return
+	}
+	r.Header().Set("Content-type","text/html; charset=utf8")
+	rows, _ := db.Query("select distinct f from messages")
+	var to string
+	addrs := make(sort.StringSlice,0)
+	for rows.Next() {
+		rows.Scan(&to)
+		to = strings.ReplaceAll(to, "\"", "")
+		to = strings.ReplaceAll(to, "  ", " ")
+		tosplit := strings.Split(to, "<")
+		if len(tosplit)>=2 {
+			to = tosplit[1]
+		}
+		to = strings.ReplaceAll(to, ">", "")
+		if to != "" {
+			i := sort.SearchStrings(addrs, to)
+			if i==len(addrs) || addrs[i]!=to {
+				addrs = append(addrs, to)
+				addrs.Sort()
+			}
+		}
+	}
+	for _, to := range addrs {
+		r.Write([]byte("<a href=\"javascript:navigator.clipboard.writeText('"+to+"')\">"+to+"</a><br>"))
+	}
+	r.Write([]byte("]"))
 
 }
 
@@ -693,6 +736,7 @@ func main() {
 	http.HandleFunc("/resync", HdlResync)
 	http.HandleFunc("/idler", HdlIdler)
 	http.HandleFunc("/tokens", HdlTokens)
+	http.HandleFunc("/abook", HdlAbook)
 	err = http.ListenAndServe("127.0.0.1:1336", nil)
 	if err != nil {
 		fmt.Println(err)

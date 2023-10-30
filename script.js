@@ -1,3 +1,5 @@
+"use strict";
+
 var hRows={};
 var curId=false; 
 var gnextId=false; 
@@ -54,7 +56,7 @@ function loadmsglist(query) {
 				var nextid=rows[(el+1)%rows.length].getAttribute("data-mid");
 				elt.setAttribute("data-nextid",nextid);
 				hRows[elt.getAttribute("data-mid")]=elt;
-				if(el==0) firstEltId=elt.getAttribute("data-mid");
+				if(el==0) firstElId=elt.getAttribute("data-mid");
 				elt.onclick=function(ee) { 
 					read(ee.currentTarget.getAttribute("data-mid")); 
 				}
@@ -246,7 +248,6 @@ document.addEventListener("DOMContentLoaded", function(e) {
 });
 
 window.addEventListener("resize", adjustsizes);
-
 function registerEvtsrc() {
 		var evtSrc=new EventSource("/idler",{withCredentials:true});
 		evtSrc.onmessage=() => { 
@@ -269,7 +270,7 @@ function toComposeMode() {
 	document.getElementById('showmsg').style.display='none';
 	document.getElementById('cmdForm').style.display='none';
 	document.getElementById('composer').style.display='block';
-	all=0;
+	var all=0;
 	if(document.location.hash.indexOf(",all,")>=0)
 		all=1;
 	var ii=document.location.hash.indexOf(",r:");
@@ -300,4 +301,3 @@ function toComposeMode() {
 	}
 
 }
-
