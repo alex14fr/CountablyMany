@@ -35,6 +35,10 @@ function read(id) {
 
 var firstElId;
 
+function eltclick(ee) {
+	read(ee.currentTarget.getAttribute("data-mid"));
+}
+
 function loadmsglist(query) {
 	var e=document.getElementById("msglistContainer");
 	e.innerHTML="Loading...";
@@ -50,16 +54,15 @@ function loadmsglist(query) {
 	fetch("/cmd?q="+encodeURIComponent(query)+"&sort="+encodeURIComponent(sort)).then(function(response) {
 		response.text().then(function(txt) {
 			e.innerHTML=txt;
-			var rows=document.getElementsByClassName('msglistRow');
-			for(var el=0;el<rows.length;el++) {
-				var elt=rows[el];
-				var nextid=rows[(el+1)%rows.length].getAttribute("data-mid");
+			const rows=document.getElementsByClassName('msglistRow');
+			const n=rows.length;
+			for(var el=0;el<n;++el) {
+				const elt=rows[el];
+				const nextid=rows[(el+1)%rows.length].getAttribute("data-mid");
 				elt.setAttribute("data-nextid",nextid);
 				hRows[elt.getAttribute("data-mid")]=elt;
 				if(el==0) firstElId=elt.getAttribute("data-mid");
-				elt.onclick=function(ee) { 
-					read(ee.currentTarget.getAttribute("data-mid")); 
-				}
+				elt.onclick=eltclick;
 			}
 			document.title="("+rows.length+") "+query+" CountablyMany";
 			if(document.location.hash && document.location.hash.indexOf(encodeURIComponent(query)>=0)) {
@@ -82,7 +85,7 @@ function nextMsg() {
 }
 
 function prevMsg() {
-	for(i in hRows) {
+	for(var i in hRows) {
 		if(hRows[i].getAttribute("data-nextid")==curId) {
 			read(i);
 		}

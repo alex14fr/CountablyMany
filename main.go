@@ -289,8 +289,9 @@ func HdlReplytemplate(r http.ResponseWriter, q *http.Request) {
 	if !fwdMode && !fwdMode2 {
 		fmt.Fprint(r, "In-reply-to: "+mail.GetHeader("Message-ID")+"\r\n")
 	}
-	fmt.Fprint(r, "References: "+mail.GetHeader("Message-ID")+" "+mail.GetHeader("References")+"\r\n"+
-		"@endheaders\r\n\r\n\r\n"
+	fmt.Fprint(r, "References: "+mail.GetHeader("Message-ID")+" "+mail.GetHeader("References")+"\r\n")
+
+	fmt.Fprint(r,"@endheaders\r\n\r\n\r\n")
 
 
 	if !fwdMode && !fwdMode2 {
@@ -676,14 +677,14 @@ func HdlAbook(r http.ResponseWriter, q *http.Request) {
 	addrs := make(sort.StringSlice,0)
 	for rows.Next() {
 		rows.Scan(&to)
-		to = strings.ReplaceAll(to, "\"", "")
+		to = strings.ToLower(strings.ReplaceAll(to, "\"", ""))
 		to = strings.ReplaceAll(to, "  ", " ")
 		tosplit := strings.Split(to, "<")
 		if len(tosplit)>=2 {
 			to = tosplit[1]
 		}
 		to = strings.ReplaceAll(to, ">", "")
-		if to != "" {
+		if to != "" && strings.Index(to, "noreply")!=0 {
 			i := sort.SearchStrings(addrs, to)
 			if i==len(addrs) || addrs[i]!=to {
 				addrs = append(addrs, to)
