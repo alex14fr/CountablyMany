@@ -27,8 +27,6 @@ import (
 
 var Mailboxes (map[string]map[string]string)
 var separ string
-var errorLog string
-var ResetCacheMTime int64
 var oauthCache map[string]string
 var oauthTimestamp map[string]int64
 
@@ -157,16 +155,6 @@ func GetMessageFile(r http.ResponseWriter, q *http.Request) (*os.File, string) {
 	return file, fname
 }
 
-func HdlSource(r http.ResponseWriter, q *http.Request) {
-	if !HookAuth(r, q) {
-		return
-	}
-
-	r.Header().Set("Content-Type", "text/plain")
-	_, fname := GetMessageFile(r, q)
-	http.ServeFile(r, q, fname)
-}
-
 func HdlRead(r http.ResponseWriter, q *http.Request) {
 	if !HookAuth(r, q) {
 		return
@@ -174,17 +162,39 @@ func HdlRead(r http.ResponseWriter, q *http.Request) {
 
 	id := q.FormValue("id")
 	file, fname := GetMessageFile(r, q)
+
+	if q.FormValue("source")!="" {
+		r.Header().Set("Content-type", "text/plain")
+		http.ServeFile(r, q, fname)
+		return
+	}
+
 	mail, err2 := enmime.ReadEnvelope(bufio.NewReader(file))
 	if err2 != nil {
 		fmt.Fprint(r, "Can't parse mail id "+id)
 		return
 	}
+
+	if q.FormValue("html")!="" {
+		r.Header().Set("Content-type", "text/html; charset=utf8")
+		r.Header().Set("Content-security-policy", "default-src 'none'")
+
+		htmlmail := string(mail.HTML)
+		if htmlmail == "" {
+			htmlmail = string(mail.Text)
+			htmlmail = strings.ReplaceAll(htmlmail, "\n", "<br>")
+		}
+		htmlmail = strings.ReplaceAll(htmlmail, "<base", "<ignore-base")
+		r.Write([]byte(htmlmail))
+		return
+	}
+		
 	fmt.Fprint(r, "<div id=headers><table><tr><td><b>From</b><td>"+mail.GetHeader("From")+
 		"<tr><td><b>To</b><td>"+html.EscapeString(mail.GetHeader("To")+", "+mail.GetHeader("Cc"))+
 		"<tr><td><b>Subject</b><td>"+html.EscapeString(mail.GetHeader("Subject"))+
 		"<tr><td><b>Date</b><td>"+html.EscapeString(mail.GetHeader("Date"))+"</table>")
 	_ = fname
-	fmt.Fprint(r, "<div id=attachments><a href=/source?id="+url.QueryEscape(id)+" target=_new>src</a>" /* ["+fname+"]" */ +"<br>")
+	fmt.Fprint(r, "<div id=attachments><a href=/read?source=1&id="+url.QueryEscape(id)+" target=_new>src</a> <a href=/read?html=1&id="+url.QueryEscape(id)+" target=_new>html</a><br>")
 	for _, att := range append(mail.Attachments, mail.Inlines...) {
 		url := "/attachget?id=" + url.QueryEscape(id) + "&cid=" + url.QueryEscape(att.FileName)
 		url1 := url + "&mode=inline"
@@ -313,13 +323,6 @@ func HdlAttachGet(r http.ResponseWriter, q *http.Request) {
 		}
 	}
 	fmt.Fprint(r, "CID not found in mail")
-}
-
-func HdlError(r http.ResponseWriter, q *http.Request) {
-	if !HookAuth(r, q) {
-		return
-	}
-	fmt.Fprint(r, errorLog)
 }
 
 func headerStr(header string, value string) (s string) {
@@ -635,7 +638,7 @@ func HdlIdler(r http.ResponseWriter, q *http.Request) {
 	r.Header().Set("Content-type", "text/event-stream")
 	r.Header().Set("Cache-control", "no-store")
 	for true {
-		WaitOneIdler()
+		<- syncChan
 		r.Write([]byte("data: newmsg\r\n\r\n"))
 		r.(http.Flusher).Flush()
 	}
@@ -655,11 +658,6 @@ func HdlTokens(r http.ResponseWriter, q *http.Request) {
 func main() {
 	rand.Seed(time.Now().UnixNano())
 	//defer profile.Start().Stop()
-	/*
-	fprof, _ := os.Create("/tmp/profile")
-	pprof.StartCPUProfile(fprof)
-	defer pprof.StopCPUProfile()
-	*/
 	separ = string(filepath.Separator)
 	var err error
 	Config,err=configparser.Read("CountablyMany.ini")
@@ -667,7 +665,6 @@ func main() {
 		fmt.Println("error reading conf file")
 		return
 	}
-	//fmt.Println(Config)
 	sections, _ := Config.Find(".imap$")
 	Mailboxes=make(map[string](map[string]string))
 	for _, section := range sections {
@@ -678,12 +675,11 @@ func main() {
 			Mailboxes[acc][mbxdefsplt[0]]=mbxdefsplt[1]
 		}
 	}
-	//fmt.Println(Mailboxes)
 	if(len(os.Args)>1 && os.Args[1]=="mkdb") {
 		Mkdb()
 		return
 	}
-
+	syncChan=make(chan int)
 	oauthCache=make(map[string]string)
 	oauthTimestamp=make(map[string]int64)
 	SyncerMkdirs()
@@ -694,10 +690,8 @@ func main() {
 	http.HandleFunc("/replytemplate", HdlReplytemplate)
 	http.HandleFunc("/attachget", HdlAttachGet)
 	http.HandleFunc("/send", HdlSend)
-	http.HandleFunc("/source", HdlSource)
 	http.HandleFunc("/resync", HdlResync)
 	http.HandleFunc("/idler", HdlIdler)
-	http.HandleFunc("/errlog", HdlError)
 	http.HandleFunc("/tokens", HdlTokens)
 	err = http.ListenAndServe("127.0.0.1:1336", nil)
 	if err != nil {

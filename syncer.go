@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"github.com/fsnotify/fsnotify"
 	"crypto/tls"
 	"database/sql"
 	"errors"
@@ -25,6 +24,7 @@ import (
 )
 
 var db (*sql.DB)
+var syncChan (chan int)
 
 type IMAPConn struct {
 	Conn *tls.Conn
@@ -79,7 +79,6 @@ func (imc *IMAPConn) WriteLine(s string) (err error) {
 	_, err = imc.RW.WriteString(s + "\r\n")
 	if err != nil {
 		fmt.Println("imap write error : ", err)
-		errorLog += "imap write error <br>"
 		return
 	}
 	imc.RW.Flush()
@@ -90,7 +89,6 @@ func Login(acc map[string]string) (imapconn *IMAPConn, err error) {
 	imapconn = new(IMAPConn)
 	conn, err := tls.Dial("tcp", acc["Server"], &tls.Config{})
 	if err != nil {
-		errorLog+="error dialing tls "+acc["Server"]+" <br>"
 		fmt.Print(err)
 		return
 	}
@@ -112,14 +110,12 @@ func Login(acc map[string]string) (imapconn *IMAPConn, err error) {
 			resp, err := http.PostForm("https://oauth2.googleapis.com/token",values)
 			if err!=nil {
 				fmt.Println("error refreshing token", err)
-				errorLog+="error refreshing oauth token<br>"
 				return nil, err
 			} 
 			var v map[string]interface{}
 			decoder:=json.NewDecoder(resp.Body)
 			if err:=decoder.Decode(&v);err!=nil {
 				fmt.Println("2error parsing json", err)
-				errorLog+="error refreshing oauth token<br>"
 				return nil, err
 			} 
 			//fmt.Println("** V=",v)
@@ -202,11 +198,6 @@ func HasMessageIDmbox(mid string, account string, mbox string) bool {
 	return (r.Scan() != sql.ErrNoRows)
 }
 
-func HasMessageID(mid string, account string) bool {
-	r := db.QueryRow("select * from messages where i=? and a=?", mid, account)
-	return (r.Scan() != sql.ErrNoRows)
-}
-
 func ParseDate(date string) int64 {
 	parsed, err := time.Parse("Mon, _2 Jan 2006 15:04:05 -0700", date)
 		if err != nil {
@@ -256,8 +247,6 @@ func ListMessagesHTML(path string, prepath string, xsort string) string {
 		}
 		rows, _ = db.Query(qry, locmb, account)
 	}
-
-	fmt.Println("QUERY  "+qry)
 
 	var ie IndexEntry
 
@@ -645,22 +634,6 @@ func IdlerAll() {
 	}
 }
 */
-func WaitOneIdler() {
-	separ = string(filepath.Separator)
-	watcher,_:=fsnotify.NewWatcher()
-	defer watcher.Close()
-	for acc,_ := range Mailboxes {
-		fmt.Println("Watching "+GetConf("Path")+separ+acc+separ+"inbox")
-		watcher.Add(GetConf("Path")+separ+acc+separ+"inbox")
-	}
-	for true {
-		ev:=<-watcher.Events
-		if ev.Op & fsnotify.Create == fsnotify.Create {
-			break
-		}
-	}
-	fmt.Println("WaitOneIdler : something happened")
-}
 
 func SyncerMain() {
 	separ = string(filepath.Separator)
@@ -674,6 +647,7 @@ func SyncerMain() {
 	IdlerAll()
 	*/
 	fmt.Println("SyncerMain stopping at ", time.Now().Format(time.ANSIC))
+	syncChan <- 1
 }
 
 func SyncerQuick(acc string, mbox string) {
@@ -688,4 +662,5 @@ func SyncerQuick(acc string, mbox string) {
 	if imapconn.Conn != nil {
 		imapconn.Conn.Close()
 	}
+	syncChan <- 1
 }
