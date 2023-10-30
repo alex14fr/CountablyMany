@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"github.com/alyu/configparser"
 	"github.com/fsnotify/fsnotify"
 	"crypto/tls"
 	"database/sql"
@@ -20,17 +19,11 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
-var hash_mutex sync.Mutex
-var idler_started map[string]bool
-var sync_inbox map[string]bool
-var dont_touch_other bool
 var db (*sql.DB)
 
 type IMAPConn struct {
@@ -167,6 +160,7 @@ type IndexEntry struct {
 	D string // date
 	I string // message-id
 	T string // to
+	UT int64 // unix time
 }
 
 func OpenDB() {
@@ -188,6 +182,7 @@ func MakeIEFromFile(filename string) IndexEntry {
 		ie.S = "unknown subject"
 		ie.D = "0"
 		ie.I = "unknown.message-id@nonexistent.tld"
+		ie.UT = 0
 		return ie
 	}
 	//fmt.Println(filename)
@@ -197,6 +192,8 @@ func MakeIEFromFile(filename string) IndexEntry {
 	ie.D = env.GetHeader("Date")
 	ie.I = env.GetHeader("Message-ID")
 	ie.T = env.GetHeader("To")
+	ie.UT = ParseDate(ie.D)
+
 	return ie
 }
 
@@ -210,16 +207,24 @@ func HasMessageID(mid string, account string) bool {
 	return (r.Scan() != sql.ErrNoRows)
 }
 
-type htmlLine struct {
-	rTime int64
-	rHtml string
+func ParseDate(date string) int64 {
+	parsed, err := time.Parse("Mon, _2 Jan 2006 15:04:05 -0700", date)
+		if err != nil {
+			parsed, err = time.Parse("Mon, _2 Jan 2006 15:04:05 -0700 (MST)", date)
+		}
+	if err != nil {
+		parsed, err = time.Parse("Mon, _2 Jan 06 15:04:05 -0700", date)
+	}
+	if err != nil {
+		parsed, err = time.Parse("Mon, _2 Jan 2006 15:04:05 MST", date)
+	}
+	if err != nil {
+		parsed, err = time.Parse("_2 Jan 2006 15:04:05 -0700", date)
+	}
+	return parsed.Unix()
 }
 
 func ListMessagesHTML(path string, prepath string, xsort string) string {
-	multiboxes := false
-	if strings.Index(path, "*") >= 0 {
-		multiboxes = true
-	}
 	a := strings.Split(path, "/")
 	if len(a) < 2 {
 		return "invalid path"
@@ -227,25 +232,27 @@ func ListMessagesHTML(path string, prepath string, xsort string) string {
 	account := a[0]
 	locmb := a[1]
 	dateND := time.Now().Format("02/01/06")
-	lines := []htmlLine{}
+	lines := make([]string, 32768)
 
 	var rows (*sql.Rows)
 
-	//db.Exec("pragma journal_mode=wal") //upd
-
-	qry:="select distinct u,a,m,s,d,i,f from messages where m=?"
+	qry:="select distinct u,a,m,s,d,i,f,ut from messages where m=?"
 	if locmb == "sent" {
 		qry=strings.Replace(qry,",f",",t",-1)
 	}
 	if account == "*" {
 		if xsort != "" {
 			qry=qry+" order by "+xsort
+		} else {
+			qry=qry+" order by ut desc"
 		}
 		rows, _ = db.Query(qry, locmb)
 	} else {
 		qry=qry+" and a=?"
 		if xsort != "" {
 			qry=qry+" order by "+xsort
+		} else {
+			qry=qry+" order by ut desc"
 		}
 		rows, _ = db.Query(qry, locmb, account)
 	}
@@ -255,69 +262,35 @@ func ListMessagesHTML(path string, prepath string, xsort string) string {
 	var ie IndexEntry
 
 	for rows.Next() {
-		rows.Scan(&ie.U, &ie.A, &ie.M, &ie.S, &ie.D, &ie.I, &ie.F)
-		/*upd
-		if(ie.F=="" && locmb=="sent") {
-			fna:=GetConf("Path")+separ+ie.A+separ+ie.M+separ+strconv.Itoa(int(ie.U))
-			fmt.Println("fna=",fna)
-			ie2:=MakeIEFromFile(fna)
-			fmt.Println("updating",ie.U,ie2.T)
-			db.Exec("update messages set t=? where a=? and m=? and u=?", ie2.T, ie.A, ie.M, ie.U)
-		} */
-		if (account == "*" || ie.A == account) && (locmb == "*" || ie.M == locmb) {
-			parsed, err := time.Parse("Mon, _2 Jan 2006 15:04:05 -0700", ie.D)
-			if err != nil {
-				parsed, err = time.Parse("Mon, _2 Jan 2006 15:04:05 -0700 (MST)", ie.D)
-			}
-			if err != nil {
-				parsed, err = time.Parse("Mon, _2 Jan 06 15:04:05 -0700", ie.D)
-			}
-			if err != nil {
-				parsed, err = time.Parse("Mon, _2 Jan 2006 15:04:05 MST", ie.D)
-			}
-			if err != nil {
-				parsed, err = time.Parse("_2 Jan 2006 15:04:05 -0700", ie.D)
-			}
-			dateLbl := parsed.Format("02/01/06")
-			if dateLbl == dateND {
-				dateH := parsed.Format("15:04")
-				dateLbl = dateH
-			}
-			from := ie.F
-			from = strings.ReplaceAll(from, "\"", "")
-			from = strings.ReplaceAll(from, "  ", " ")
-			fromsplit := strings.Split(from, "<")
-			if fromsplit[0] != "" || len(fromsplit) < 2 {
-				from = fromsplit[0]
-			} else {
-				from = fromsplit[1]
-			}
-			curpath := ""
-			if multiboxes {
-				curpath = "<span>" + ie.A + "/" + ie.M + "</span>"
-			}
-			pendingMove, _ := ioutil.ReadFile(prepath + separ + ie.A + separ + ie.M + separ + "moves" + separ + strconv.Itoa(int(ie.U)))
-			pendingMovestr := string(pendingMove)
-			if pendingMovestr != "" {
-				pendingMovestr = "<span>&rarr; " + pendingMovestr + "</span>"
-			}
-			lines = append(lines, htmlLine{rHtml: fmt.Sprintf("<div class=msglistRow data-mid='%s'><span>%s</span><span>%s</span><span>%s</span>%s%s</div>", ie.A+"/"+ie.M+"/"+strconv.Itoa(int(ie.U)), dateLbl, from, html.EscapeString(ie.S), curpath, pendingMovestr),
-				rTime: parsed.Unix()})
+		rows.Scan(&ie.U, &ie.A, &ie.M, &ie.S, &ie.D, &ie.I, &ie.F, &ie.UT)
+		from := ie.F
+		from = strings.ReplaceAll(from, "\"", "")
+		from = strings.ReplaceAll(from, "  ", " ")
+		fromsplit := strings.Split(from, "<")
+		if fromsplit[0] != "" || len(fromsplit) < 2 {
+			from = fromsplit[0]
+		} else {
+			from = fromsplit[1]
 		}
+		curpath := "<span>" + ie.A + "/" + ie.M + "</span>"
+		parsed := time.Unix(ie.UT, 0)
+		dateLbl := parsed.Format("02/01/06")
+		if dateLbl == dateND {
+			dateH := parsed.Format("15:04")
+			dateLbl = dateH
+		}
+		pendingMove, _ := ioutil.ReadFile(prepath + separ + ie.A + separ + ie.M + separ + "moves" + separ + strconv.Itoa(int(ie.U)))
+		pendingMovestr := string(pendingMove)
+		if pendingMovestr != "" {
+			pendingMovestr = "<span>&rarr; " + pendingMovestr + "</span>"
+		}
+		lines = append(lines, "<div class=msglistRow data-mid='"+ie.A+"/"+ie.M+"/"+strconv.Itoa(int(ie.U))+"'><span>"+dateLbl+"</span><span>"+from+"</span><span>"+html.EscapeString(ie.S)+"</span>"+curpath+pendingMovestr+"</div>")
 	}
-	s := ""
-	if xsort == "" {
-		fmt.Println("SORTING BY TIME")
-		sort.Slice(lines, func(i int, j int) bool { return lines[i].rTime > lines[j].rTime })
-	}
-	for _, l := range lines {
-		s = s + l.rHtml
-	}
+	s := strings.Join(lines, "")
 	if s == "" {
 		s = "No mail."
 	}
 	return s
-
 }
 
 func getMidFromFile(filename string) string {
@@ -331,8 +304,8 @@ func dbDelete(uid uint32, account string, mbox string) {
 }
 
 func dbAppend(ie IndexEntry) {
-	db.Exec("insert into messages (u,a,m,f,s,d,i,t) values (?,?,?,?,?,?,?,?)",
-		ie.U, ie.A, ie.M, ie.F, ie.S, ie.D, ie.I, ie.T)
+	db.Exec("insert into messages (u,a,m,f,s,d,i,t,ut) values (?,?,?,?,?,?,?,?,?)",
+		ie.U, ie.A, ie.M, ie.F, ie.S, ie.D, ie.I, ie.T, ie.UT)
 }
 
 func (imc *IMAPConn) AppendFile(accountname string, localmbname string, filename string, allowDup bool, keepOrig bool) error {
@@ -478,16 +451,18 @@ func (imc *IMAPConn) FetchNewInMailbox(account string, localmbname string, fromU
 		ie.U = uint32(uid)
 		ie.A = account
 		ie.M = localmbname
+		/*
 		if HasMessageID(ie.I, ie.A) {
 			fmt.Println("MID "+ie.I+" was already in index (foreign move ?)")
 			fmt.Println("keeping both for now")
-		}
+		} */
 		dbAppend(ie)
 		i++
 	}
 	return nil
 }
 
+/*
 func (imc *IMAPConn) BlockIdle(mbox string) (err error) {
 	imc.WriteLine("x examine " + mbox)
 	imc.ReadLine("x ")
@@ -520,6 +495,7 @@ func (imc *IMAPConn) BlockIdle(mbox string) (err error) {
 	_, err = imc.ReadLine("x OK")
 	return
 }
+*/
 
 func (imc *IMAPConn) MoveInMailbox(account string, localmbname string) error {
 	path := GetConf("Path") + separ + account + separ + localmbname + separ + "moves"
@@ -625,6 +601,7 @@ func startIMAPLoop(acc string) {
 	}
 }
 
+/*
 func IdlerAll() {
 	sects, _ := Config.Find(".imap$")
 	for _,section := range sects {
@@ -667,7 +644,7 @@ func IdlerAll() {
 		}(accName,section)
 	}
 }
-
+*/
 func WaitOneIdler() {
 	separ = string(filepath.Separator)
 	watcher,_:=fsnotify.NewWatcher()

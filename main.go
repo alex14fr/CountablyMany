@@ -1,6 +1,8 @@
 package main
 
 import (
+	"database/sql"
+	_ "github.com/mattn/go-sqlite3"
 	"bufio"
 	"crypto/sha256"
 	"crypto/tls"
@@ -20,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+//	"github.com/pkg/profile"
 )
 
 var Mailboxes (map[string]map[string]string)
@@ -64,6 +67,54 @@ func GetConfS(se string, k string) string {
 
 func GetConf(k string) string {
 	return GetConfS("all",k)
+}
+
+/*
+func HdlFolder(r http.ResponseWriter, q *http.Request) {
+	if !HookAuth(r, q) {
+		return
+	}
+	folder := q.FormValue("folder")
+
+	r.Header().Set("Cache-control", "no-store")
+
+	if folder[0] != '/' {
+		folder = GetConf("Path")+"/"+folder
+	}
+
+}
+*/
+
+func Mkdb() {
+	os.Remove(GetConf("Path")+separ+"Index.sqlite")	
+	var err error
+	db, err = sql.Open("sqlite3", GetConf("Path")+separ+"Index.sqlite")
+	if err != nil {
+		fmt.Println("error : "+err.Error())
+		return
+	}
+	db.Exec("pragma journal_mode=wal; CREATE TABLE messages(u integer, a text, m text, f text, s text, d text, i text, t text, ut integer); CREATE INDEX idx1 on messages (m,a); CREATE INDEX idx2 on messages (i,a,m);")
+	for acc, curacc := range Mailboxes {
+		for locmb, _ := range curacc {
+			path := GetConf("Path")+separ+acc+separ+locmb
+			fmt.Println("path="+path)
+			dirents, _ := os.ReadDir(path)
+			for _, dirent := range dirents {
+				uid, err := strconv.ParseInt(dirent.Name(), 10, 0)
+				if err == nil {
+					filename:=path+separ+dirent.Name()
+					fmt.Println("inserting "+filename)
+					ie:=MakeIEFromFile(filename)
+					ie.U=uint32(uid)
+					ie.A=acc
+					ie.M=locmb
+					dbAppend(ie)
+				}
+			}
+
+		}
+	}
+	db.Close()
 }
 
 func HdlCmd(r http.ResponseWriter, q *http.Request) {
@@ -602,9 +653,13 @@ func HdlTokens(r http.ResponseWriter, q *http.Request) {
 }
 
 func main() {
-	dont_touch_other=false
 	rand.Seed(time.Now().UnixNano())
 	//defer profile.Start().Stop()
+	/*
+	fprof, _ := os.Create("/tmp/profile")
+	pprof.StartCPUProfile(fprof)
+	defer pprof.StopCPUProfile()
+	*/
 	separ = string(filepath.Separator)
 	var err error
 	Config,err=configparser.Read("CountablyMany.ini")
@@ -612,11 +667,9 @@ func main() {
 		fmt.Println("error reading conf file")
 		return
 	}
-	fmt.Println(Config)
+	//fmt.Println(Config)
 	sections, _ := Config.Find(".imap$")
 	Mailboxes=make(map[string](map[string]string))
-	idler_started=make(map[string]bool)
-	sync_inbox=make(map[string]bool)
 	for _, section := range sections {
 		acc:=strings.Replace(section.Name(),".imap","",-1)
 		Mailboxes[acc]=make(map[string]string)
@@ -625,7 +678,12 @@ func main() {
 			Mailboxes[acc][mbxdefsplt[0]]=mbxdefsplt[1]
 		}
 	}
-	fmt.Println(Mailboxes)
+	//fmt.Println(Mailboxes)
+	if(len(os.Args)>1 && os.Args[1]=="mkdb") {
+		Mkdb()
+		return
+	}
+
 	oauthCache=make(map[string]string)
 	oauthTimestamp=make(map[string]int64)
 	SyncerMkdirs()
