@@ -87,6 +87,7 @@ func (imc *IMAPConn) WriteLine(s string) (err error) {
 
 func Login(acc map[string]string) (imapconn *IMAPConn, err error) {
 	imapconn = new(IMAPConn)
+	println(acc["Server"])
 	conn, err := tls.Dial("tcp", acc["Server"], &tls.Config{})
 	if err != nil {
 		fmt.Print(err)
@@ -109,21 +110,22 @@ func Login(acc map[string]string) (imapconn *IMAPConn, err error) {
 			values.Set("refresh_token", token)
 			resp, err := http.PostForm("https://oauth2.googleapis.com/token", values)
 			if err != nil {
-				println("error refreshing token"+err.Error())
+				println("error refreshing token" + err.Error())
 				return nil, err
 			}
 			var v map[string]interface{}
 			decoder := json.NewDecoder(resp.Body)
 			if err := decoder.Decode(&v); err != nil {
-				println("2error parsing json"+err.Error())
+				println("2error parsing json" + err.Error())
 				return nil, err
 			}
-			w = "user="+acc["User"]+"\001auth=Bearer"+v["access_token"].(string)+"\001\001"
+			w = "user=" + acc["User"] + "\001auth=Bearer " + v["access_token"].(string) + "\001\001"
 			w = base64.StdEncoding.EncodeToString([]byte(w))
 			oauthCache[acc["Server"]] = w
 			oauthTimestamp[acc["Server"]] = time.Now().Unix()
 		}
 		imapconn.WriteLine("x authenticate xoauth2 " + w)
+		println("token = ", w)
 	} else {
 		imapconn.WriteLine("x login " + acc["User"] + " " + acc["Pass"])
 	}
@@ -140,7 +142,7 @@ func (imc *IMAPConn) Append(remotembname string, content string) (uid uint32) {
 	var uu uint32
 	_, err := fmt.Sscanf(s, "x OK [APPENDUID %d %d", &uu, &uid)
 	if err != nil {
-		println("! Append not ok: "+s+err.Error())
+		println("! Append not ok: " + s + err.Error())
 		uid = 0
 	}
 	return
@@ -163,7 +165,7 @@ func OpenDB() {
 	var err error
 	db, err = sql.Open("sqlite3", GetConf("Path")+separ+"Index.sqlite")
 	if err != nil {
-		println("! DB error unable to open Index.sqlite: "+err.Error())
+		println("! DB error unable to open Index.sqlite: " + err.Error())
 	}
 }
 
@@ -172,7 +174,7 @@ func MakeIEFromFile(filename string) IndexEntry {
 	fil, _ := os.Open(filename)
 	env, err := enmime.ReadEnvelope(fil)
 	if err != nil {
-		println("! error reading envelope for "+filename)
+		println("! error reading envelope for " + filename)
 		ie.F = "unknown <u@u.tld>"
 		ie.S = "unknown subject"
 		ie.D = "0"
@@ -315,18 +317,18 @@ func (imc *IMAPConn) AppendFile(accountname string, localmbname string, filename
 		copyfile := GetConf("Path") + separ + accountname + separ + localmbname + separ + strconv.Itoa(int(uid))
 		err := os.Link(filename, copyfile)
 		if err != nil {
-			println("AppendFile: link error"+err.Error())
+			println("AppendFile: link error" + err.Error())
 			return err
 		}
 		if !keepOrig {
 			filenameCopy := strings.ReplaceAll(filename, "appends", "appended")
-			println("moving "+filename+" to "+filenameCopy)
+			println("moving " + filename + " to " + filenameCopy)
 			err = os.Rename(filename, filenameCopy)
 			if err != nil {
-				println("error renaming: "+err.Error())
+				println("error renaming: " + err.Error())
 			}
 		} else {
-			println("keeping "+filename)
+			println("keeping " + filename)
 		}
 		return nil
 	}
@@ -347,12 +349,12 @@ func GetHighestUID(account string, localmbname string) uint32 {
 	huid := uint32(0)
 	r := db.QueryRow("select MAX(u) from messages where a=? and m=?", account, localmbname)
 	r.Scan(&huid)
-	println("GetHighestUID a="+account+" m="+localmbname+" = "+strconv.Itoa(int(huid)))
+	println("GetHighestUID a=" + account + " m=" + localmbname + " = " + strconv.Itoa(int(huid)))
 	return huid
 }
 
 func (imc *IMAPConn) FetchNewInMailbox(account string, localmbname string, fromUid uint32) error {
-	println("Fetch new in mailbox "+account+"/"+localmbname+"...")
+	println("Fetch new in mailbox " + account + "/" + localmbname + "...")
 	if fromUid == 0 {
 		fromUid = GetHighestUID(account, localmbname) + 1
 	}
@@ -375,9 +377,7 @@ func (imc *IMAPConn) FetchNewInMailbox(account string, localmbname string, fromU
 	}
 
 	uidToFetch := make([]uint32, 0, 65536)
-	sizesToFetch := make([]uint32, 0, 65536)
 	var d int
-	i := 0
 	imc.ReadLine("x ")
 	imc.WriteLine(randomtag + " uid fetch " + strconv.Itoa(int(fromUid)) + ":* rfc822.size")
 	for true {
@@ -387,34 +387,34 @@ func (imc *IMAPConn) FetchNewInMailbox(account string, localmbname string, fromU
 		}
 		if strings.Index(ss, "FETCH") >= 0 {
 			println("scanning ", ss)
-			var x,y uint32
+			var x, y uint32
 			fmt.Sscanf(ss, "* %d FETCH (UID %d RFC822.SIZE %d)", &d, &x, &y)
-			uidToFetch=append(uidToFetch, x)
-			sizesToFetch=append(sizesToFetch, y)
-			if uidToFetch[i] < fromUid {
+			if x < fromUid {
 				println("breaking !")
 				break
 			}
-			println("to fetch ", i, "uid=", uidToFetch[i], "size=", sizesToFetch[i])
-			i++
+			uidToFetch = append(uidToFetch, x)
+			println("to fetch uid=", x)
 		}
 	}
 	cnt, err := os.ReadFile(GetConf("Path") + separ + account + separ + localmbname + separ + "tofetch")
 	if err == nil {
 		cnts := strings.Split(string(cnt), "\n")
 		for _, cntt := range cnts {
-			fmt.Sscanf(cntt, "%d", &uidToFetch[i])
-			println("add to fetch cntt=", cntt, " uid=", uidToFetch[i])
-			i++
+			if len(cntt)>0 {
+				x, err := strconv.Atoi(cntt)
+				if err == nil {
+					uidToFetch=append(uidToFetch, uint32(x))
+					println("add to fetch uid=", x)
+				}
+			}
 		}
 		os.Remove(GetConf("Path") + separ + account + separ + localmbname + separ + "tofetch")
 	}
-	nToFetch := i
-	i = 0
-	for i < nToFetch {
+	for i, curUid := range uidToFetch {
 		var uid, leng int
-		println("fetching ", i, "/ ", nToFetch-1, "...")
-		imc.WriteLine(randomtag + " uid fetch " + strconv.Itoa(int(uidToFetch[i])) + " rfc822")
+		println("fetching ", i+1, "/ ", len(uidToFetch), "...")
+		imc.WriteLine(randomtag + " uid fetch " + strconv.Itoa(int(curUid)) + " rfc822")
 		s, _ := imc.ReadLine("* ")
 		fmt.Sscanf(s, "* %d FETCH (UID %d RFC822 {%d", &d, &uid, &leng)
 		println("got uid:", uid, " length:", leng)
@@ -437,7 +437,6 @@ func (imc *IMAPConn) FetchNewInMailbox(account string, localmbname string, fromU
 		ie.A = account
 		ie.M = localmbname
 		dbAppend(ie)
-		i++
 	}
 	return nil
 }
@@ -461,8 +460,6 @@ func (imc *IMAPConn) MoveInMailbox(account string, localmbname string) error {
 				imc.WriteLine("x uid store " + finf.Name() + " flags \\Deleted")
 				imc.ReadLine("x ")
 				doExpunge = true
-				//imc.WriteLine("x expunge")
-				//imc.ReadLine("x ")
 				fname := GetConf("Path") + separ + account + separ + localmbname + separ + finf.Name()
 				println("removing ", fname)
 				err := os.Remove(fname)
@@ -472,7 +469,7 @@ func (imc *IMAPConn) MoveInMailbox(account string, localmbname string) error {
 				uid2kill, _ := strconv.Atoi(finf.Name())
 				dbDelete(uint32(uid2kill), account, localmbname)
 			} else {
-				if GetConfS(account+".imap", "HasUIDMove") == "1" {
+				if Mailboxes[account]["HasUIDMove"] == "1" {
 					imc.WriteLine("x uid move " + finf.Name() + " " + Mailboxes[account][string(dest)])
 				} else {
 					println("move by copy and kill...")
@@ -482,13 +479,11 @@ func (imc *IMAPConn) MoveInMailbox(account string, localmbname string) error {
 				s, _ := imc.ReadLine("x OK")
 				fmt.Sscanf(s, "x OK [COPYUID %d %d %d", &d, &olduid, &uid)
 				println("uid in orig folder is ", olduid, " uid in dest folder is ", uid)
-				if GetConfS(account+".imap", "HasUIDMove") != "1" && olduid != 0 && uid != 0 {
+				if Mailboxes[account]["HasUIDMove"] != "1" && olduid != 0 && uid != 0 {
 					olduids := strconv.Itoa(int(olduid))
 					imc.WriteLine("x uid store " + olduids + " flags \\Deleted")
 					imc.ReadLine("x OK")
 					doExpunge = true
-					//imc.WriteLine("x expunge")
-					//imc.ReadLine("x OK")
 					println("killed old")
 				}
 				newuids := strconv.Itoa(int(uid))
@@ -497,7 +492,6 @@ func (imc *IMAPConn) MoveInMailbox(account string, localmbname string) error {
 					println("error during local rename : ", err)
 					println("local index not updated")
 				} else {
-					//	dbDelete(olduid, account, localmbname)
 					db.Exec("update messages set u=?, m=? where u=? and m=? and a=?",
 						uid, string(dest), olduid, localmbname, account)
 				}
@@ -529,8 +523,7 @@ func SyncerMkdirs() {
 }
 
 func startIMAPLoop(acc string) {
-	configs, _ := Config.Section(acc + ".imap")
-	accparam := configs.Options()
+	accparam := IMAPServ[acc]
 	imapconn, err := Login(accparam)
 	if err != nil {
 		println("login error, skipping account ", acc)
@@ -558,8 +551,7 @@ func SyncerMain() {
 }
 
 func SyncerQuick(acc string, mbox string) {
-	configs, _ := Config.Section(acc + ".imap")
-	accparam := configs.Options()
+	accparam := IMAPServ[acc]
 	imapconn, err := Login(accparam)
 	if err != nil {
 		println("login error, skipping account ", acc)

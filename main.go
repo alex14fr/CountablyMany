@@ -9,7 +9,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/alyu/configparser"
 	"github.com/jhillyerd/enmime"
 	_ "github.com/mattn/go-sqlite3"
 	"html"
@@ -27,7 +26,6 @@ import (
 	// "github.com/pkg/profile"
 )
 
-var Mailboxes (map[string]map[string]string)
 var separ string
 var oauthCache map[string]string
 var oauthTimestamp map[string]int64
@@ -58,15 +56,8 @@ func HdlRes(r http.ResponseWriter, q *http.Request) {
 	}
 }
 
-var Config (*configparser.Configuration)
-
-func GetConfS(se string, k string) string {
-	sec, _ := Config.Section(se)
-	return sec.ValueOf(k)
-}
-
 func GetConf(k string) string {
-	return GetConfS("all", k)
+	return GlobConf[k]
 }
 
 /*
@@ -93,7 +84,7 @@ func Mkdb() {
 		fmt.Println("error : " + err.Error())
 		return
 	}
-	db.Exec("pragma journal_mode=wal; CREATE TABLE messages(u integer, a text, m text, f text, s text, d text, i text, t text, ut integer); CREATE INDEX idx1 on messages (m,a); CREATE INDEX idx2 on messages (i,a,m);")
+	db.Exec("pragma journal_mode=wal; CREATE TABLE messages(u integer, a text, m text, f text, s text, d text, i text, t text, ut integer); CREATE INDEX idx1 on messages (m,a); CREATE INDEX idx2 on messages (i,a,m); begin transaction; ")
 	for acc, curacc := range Mailboxes {
 		for locmb, _ := range curacc {
 			path := GetConf("Path") + separ + acc + separ + locmb
@@ -114,6 +105,7 @@ func Mkdb() {
 
 		}
 	}
+	db.Exec("commit; ")
 	db.Close()
 }
 
@@ -188,8 +180,8 @@ func HdlRead(r http.ResponseWriter, q *http.Request) {
 
 		htmlmail := string(mail.HTML)
 		if htmlmail == "" {
-			htmlmail = string(mail.Text)
-			htmlmail = strings.ReplaceAll(htmlmail, "\n", "<br>")
+			htmlmail = "<pre>" + string(mail.Text) + "</pre>"
+			//htmlmail = strings.ReplaceAll(htmlmail, "\n", "<br>")
 		}
 		htmlmail = strings.ReplaceAll(htmlmail, "<base", "<ignore-base")
 		r.Write([]byte(hdrs + htmlmail))
@@ -244,67 +236,70 @@ func HdlReplytemplate(r http.ResponseWriter, q *http.Request) {
 	}
 
 	id := q.FormValue("id")
-	fwdMode := (q.FormValue("mode") == "f")
-	fwdMode2 := (q.FormValue("mode") == "f2")
-	file, fname := GetMessageFile(r, q)
-	_ = fname
-	mail, err2 := enmime.ReadEnvelope(bufio.NewReader(file))
-	if err2 != nil {
-		io.WriteString(r, "Can't parse mail id "+id+" "+err2.Error())
-		return
-	}
-	replyto := ""
-	subjectre := ""
-	if !fwdMode && !fwdMode2 {
-		replyto = mail.GetHeader("From")
-		if mail.GetHeader("Reply-to") != "" {
-			replyto = mail.GetHeader("Reply-to")
+
+	if id != "" {
+		fwdMode := (q.FormValue("mode") == "f")
+		fwdMode2 := (q.FormValue("mode") == "f2")
+		replyto := ""
+		subjectre := ""
+		file, fname := GetMessageFile(r, q)
+		_ = fname
+		mail, err2 := enmime.ReadEnvelope(bufio.NewReader(file))
+		if err2 != nil {
+			io.WriteString(r, "Can't parse mail id "+id+" "+err2.Error())
+			return
 		}
-		if q.FormValue("all") == "1" {
-			replyto = replyto + "," + mail.GetHeader("To") + "," + mail.GetHeader("Cc")
+		if !fwdMode && !fwdMode2 {
+			replyto = mail.GetHeader("From")
+			if mail.GetHeader("Reply-to") != "" {
+				replyto = mail.GetHeader("Reply-to")
+			}
+			if q.FormValue("all") == "1" {
+				replyto = replyto + "," + mail.GetHeader("To") + "," + mail.GetHeader("Cc")
+			}
+			replyto = extractAddr(replyto)
+			subjectre = "Re: " + mail.GetHeader("Subject")
+			if strings.Index(mail.GetHeader("Subject"), "Re:") >= 0 || strings.Index(mail.GetHeader("Subject"), "re:") >= 0 {
+				subjectre = mail.GetHeader("Subject")
+			}
+		} else {
+			subjectre = "Fwd: " + mail.GetHeader("Subject")
 		}
-		replyto = extractAddr(replyto)
-		subjectre = "Re: " + mail.GetHeader("Subject")
-		if strings.Index(mail.GetHeader("Subject"), "Re:") >= 0 || strings.Index(mail.GetHeader("Subject"), "re:") >= 0 {
-			subjectre = mail.GetHeader("Subject")
+		mailtxt := mail.Text
+		mailtxt = "> " + strings.ReplaceAll(mailtxt, "\n", "\n> ")
+		replyidentity := "default"
+		acc := strings.Split(id, "/")[0]
+		for sectionNam, sectionVal := range SMTPServ {
+			dfltFor := sectionVal["DefaultFor"]
+			if strings.Index(dfltFor, acc) >= 0 {
+				replyidentity = sectionNam
+				break
+			}
+		}
+		io.WriteString(r, replyidentity+"\r\n"+
+			"To: "+replyto+"\r\n"+
+			"Cc: \r\n"+
+			"Subject: "+subjectre+"\r\n")
+		if !fwdMode && !fwdMode2 {
+			io.WriteString(r, "In-reply-to: "+mail.GetHeader("Message-ID")+"\r\n")
+		}
+		io.WriteString(r, "References: "+mail.GetHeader("Message-ID")+" "+mail.GetHeader("References")+"\r\n")
+
+		io.WriteString(r, "@endheaders\r\n\r\n\r\n")
+
+		if !fwdMode2 {
+			io.WriteString(r, "\r\n--- Original message ---\r\n"+
+				"From: "+mail.GetHeader("From")+"\r\n"+
+				"To: "+mail.GetHeader("To")+"\r\n"+
+				"Cc: "+mail.GetHeader("Cc")+"\r\n"+
+				"Subject: "+mail.GetHeader("Subject")+"\r\n"+
+				"Date: "+mail.GetHeader("Date")+"\r\n\r\n"+mailtxt)
 		}
 	} else {
-		subjectre = "Fwd: " + mail.GetHeader("Subject")
-	}
-	mailtxt := mail.Text
-	mailtxt = "> " + strings.ReplaceAll(mailtxt, "\n", "\n> ")
-	replyidentity := "default"
-	acc := strings.Split(id, "/")[0]
-	sections, _ := Config.Find(".smtp$")
-	for _, section := range sections {
-		dfltFor := section.ValueOf("DefaultFor")
-		if strings.Index(dfltFor, acc) >= 0 {
-			replyidentity = strings.Replace(section.Name(), ".smtp", "", -1)
-			break
-		}
-	}
-	io.WriteString(r, replyidentity+"\r\n"+
-		"To: "+replyto+"\r\n"+
-		"Cc: \r\n"+
-		"Subject: "+subjectre+"\r\n")
-	if !fwdMode && !fwdMode2 {
-		io.WriteString(r, "In-reply-to: "+mail.GetHeader("Message-ID")+"\r\n")
-	}
-	io.WriteString(r, "References: "+mail.GetHeader("Message-ID")+" "+mail.GetHeader("References")+"\r\n")
-
-	io.WriteString(r, "@endheaders\r\n\r\n\r\n")
-
-	if !fwdMode && !fwdMode2 {
-		io.WriteString(r, "\r\n--- Original message ---\r\n"+
-			"From: "+mail.GetHeader("From")+"\r\n"+
-			"To: "+mail.GetHeader("To")+"\r\n"+
-			"Cc: "+mail.GetHeader("Cc")+"\r\n"+
-			"Subject: "+mail.GetHeader("Subject")+"\r\n"+
-			"Date: "+mail.GetHeader("Date")+"\r\n\r\n"+mailtxt)
-	}
-
-	if fwdMode {
-		io.WriteString(r, "\r\n@attachments "+id)
+		io.WriteString(r, "@default\r\n"+
+			"To: "+q.FormValue("to")+"\r\n"+
+			"Cc: \r\n"+
+			"Subject: \r\n@endheaders\r\n\r\n")
 	}
 }
 
@@ -464,12 +459,12 @@ func Sendmail_OAuth(host string, user string, token string, from string, to []st
 		resp, err := http.PostForm("https://oauth2.googleapis.com/token", values)
 
 		if err != nil {
-			return "error refreshing token"+err.Error()
+			return "error refreshing token" + err.Error()
 		}
 		var v map[string]interface{}
 		decoder := json.NewDecoder(resp.Body)
 		if err := decoder.Decode(&v); err != nil {
-			return "2error parsing json"+err.Error()
+			return "2error parsing json" + err.Error()
 		}
 		w = fmt.Sprintf("user=%s\001auth=Bearer %s\001\001", user, v["access_token"].(string))
 		w = base64.StdEncoding.EncodeToString([]byte(w))
@@ -528,8 +523,7 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 	fmt.Sscanf(composeText, "%s\n", &identity)
 
 	boundary := "b" + strconv.FormatUint(rand.Uint64(), 36) + strconv.FormatUint(rand.Uint64()>>32, 36)
-	sect, _ := Config.Section(identity + ".smtp")
-	outId := sect.Options()
+	outId := SMTPServ[identity]
 	multipart := checkAttach(q, "attach1") || checkAttach(q, "attach2") || checkAttach(q, "attach3") || checkAttach(q, "attach4") || checkAttach(q, "attach5") || checkAttach(q, "attach6") || q.FormValue("attachMessage") != ""
 	ss := sha256.Sum256([]byte(composeText))
 	sss := ss[:]
@@ -691,7 +685,7 @@ func HdlAbook(r http.ResponseWriter, q *http.Request) {
 		}
 	}
 	for _, to := range addrs {
-		r.Write([]byte("<a href=\"javascript:navigator.clipboard.writeText('" + to + "')\">" + to + "</a><br>"))
+		r.Write([]byte("<a href=\"mailto:" + to + "\">" + to + "</a> <a href=\"javascript:navigator.clipboard.writeText('" + to + "')\">[copier]</a><br>"))
 	}
 	r.Write([]byte("]"))
 
@@ -702,21 +696,7 @@ func main() {
 	//defer profile.Start().Stop()
 	separ = string(filepath.Separator)
 	var err error
-	Config, err = configparser.Read("CountablyMany.ini")
-	if err != nil {
-		fmt.Println("error reading conf file")
-		return
-	}
-	sections, _ := Config.Find(".imap$")
-	Mailboxes = make(map[string](map[string]string))
-	for _, section := range sections {
-		acc := strings.Replace(section.Name(), ".imap", "", -1)
-		Mailboxes[acc] = make(map[string]string)
-		for _, mbxdef := range strings.Split(section.ValueOf("Mailboxes"), " ") {
-			mbxdefsplt := strings.Split(mbxdef, "=")
-			Mailboxes[acc][mbxdefsplt[0]] = mbxdefsplt[1]
-		}
-	}
+	readConfig()
 	if len(os.Args) > 1 && os.Args[1] == "mkdb" {
 		Mkdb()
 		return

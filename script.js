@@ -209,6 +209,10 @@ document.addEventListener("keydown", function(e) {
 	else if(e.key=="F") {
 		window.open('#compose,F:'+curId);
 	}
+
+	else if(e.key=="@") {
+		navigator.registerProtocolHandler("mailto", "/#compose,%s", "CM");
+	}
 	e.preventDefault();
 });
 
@@ -274,6 +278,14 @@ function toComposeMode() {
 	document.getElementById('cmdForm').style.display='none';
 	document.getElementById('composer').style.display='block';
 	var all=0;
+	if(document.location.hash.indexOf(",mailto")>=0) {
+		var hashh=decodeURIComponent(document.location.hash);
+		var jj=hashh.indexOf(",mailto:");
+		var addr=hashh.substr(jj+8);
+		fetch("/replytemplate?to="+addr).then(function(response) { response.text().then(function(txt) {
+			document.getElementById('compose').innerHTML=txt; }); });
+		return;
+	}
 	if(document.location.hash.indexOf(",all,")>=0)
 		all=1;
 	var ii=document.location.hash.indexOf(",r:");
