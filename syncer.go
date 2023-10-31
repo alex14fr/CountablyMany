@@ -109,17 +109,16 @@ func Login(acc map[string]string) (imapconn *IMAPConn, err error) {
 			values.Set("refresh_token", token)
 			resp, err := http.PostForm("https://oauth2.googleapis.com/token", values)
 			if err != nil {
-				fmt.Println("error refreshing token", err)
+				println("error refreshing token"+err.Error())
 				return nil, err
 			}
 			var v map[string]interface{}
 			decoder := json.NewDecoder(resp.Body)
 			if err := decoder.Decode(&v); err != nil {
-				fmt.Println("2error parsing json", err)
+				println("2error parsing json"+err.Error())
 				return nil, err
 			}
-			//fmt.Println("** V=",v)
-			w = fmt.Sprintf("user=%s\001auth=Bearer %s\001\001", acc["User"], v["access_token"].(string))
+			w = "user="+acc["User"]+"\001auth=Bearer"+v["access_token"].(string)+"\001\001"
 			w = base64.StdEncoding.EncodeToString([]byte(w))
 			oauthCache[acc["Server"]] = w
 			oauthTimestamp[acc["Server"]] = time.Now().Unix()
@@ -141,7 +140,7 @@ func (imc *IMAPConn) Append(remotembname string, content string) (uid uint32) {
 	var uu uint32
 	_, err := fmt.Sscanf(s, "x OK [APPENDUID %d %d", &uu, &uid)
 	if err != nil {
-		fmt.Println("! Append not ok: ", s, err)
+		println("! Append not ok: "+s+err.Error())
 		uid = 0
 	}
 	return
@@ -164,7 +163,7 @@ func OpenDB() {
 	var err error
 	db, err = sql.Open("sqlite3", GetConf("Path")+separ+"Index.sqlite")
 	if err != nil {
-		fmt.Println("! DB error unable to open Index.sqlite: ", err)
+		println("! DB error unable to open Index.sqlite: "+err.Error())
 	}
 }
 
@@ -173,7 +172,7 @@ func MakeIEFromFile(filename string) IndexEntry {
 	fil, _ := os.Open(filename)
 	env, err := enmime.ReadEnvelope(fil)
 	if err != nil {
-		fmt.Println("! error reading envelope for ", fil)
+		println("! error reading envelope for "+filename)
 		ie.F = "unknown <u@u.tld>"
 		ie.S = "unknown subject"
 		ie.D = "0"
@@ -181,7 +180,6 @@ func MakeIEFromFile(filename string) IndexEntry {
 		ie.UT = 0
 		return ie
 	}
-	//fmt.Println(filename)
 
 	ie.F = env.GetHeader("From")
 	ie.S = env.GetHeader("Subject")
@@ -223,7 +221,7 @@ func ListMessagesHTML(path string, prepath string, xsort string) string {
 	account := a[0]
 	locmb := a[1]
 	dateND := time.Now().Format("02/01/06")
-	lines := make([]string, 32768)
+	lines := make([]string, 0, 32768)
 
 	var rows (*sql.Rows)
 
@@ -302,7 +300,7 @@ func (imc *IMAPConn) AppendFile(accountname string, localmbname string, filename
 		mid := getMidFromFile(filename)
 		if mid != "" && HasMessageIDmbox(mid, accountname, localmbname) {
 			err := "AppendFile " + filename + " would duplicate Message-ID " + mid + " in index for " + accountname + "/" + localmbname
-			fmt.Println(err)
+			println(err)
 			return errors.New(err)
 		}
 	}
@@ -317,18 +315,18 @@ func (imc *IMAPConn) AppendFile(accountname string, localmbname string, filename
 		copyfile := GetConf("Path") + separ + accountname + separ + localmbname + separ + strconv.Itoa(int(uid))
 		err := os.Link(filename, copyfile)
 		if err != nil {
-			fmt.Println("AppendFile: link error", err)
+			println("AppendFile: link error"+err.Error())
 			return err
 		}
 		if !keepOrig {
 			filenameCopy := strings.ReplaceAll(filename, "appends", "appended")
-			fmt.Println("moving ", filename, " to ", filenameCopy)
+			println("moving "+filename+" to "+filenameCopy)
 			err = os.Rename(filename, filenameCopy)
 			if err != nil {
-				fmt.Println("error renaming: ", err)
+				println("error renaming: "+err.Error())
 			}
 		} else {
-			fmt.Println("keeping ", filename)
+			println("keeping "+filename)
 		}
 		return nil
 	}
@@ -339,7 +337,7 @@ func (imc *IMAPConn) AppendFilesInDir(account string, localmbname string, direct
 	finfs, _ := ioutil.ReadDir(directory)
 	for _, finf := range finfs {
 		if !finf.IsDir() {
-			fmt.Println("AppendFilesInDir: appending " + finf.Name() + " in " + account + "/" + localmbname + "...")
+			println("AppendFilesInDir: appending " + finf.Name() + " in " + account + "/" + localmbname + "...")
 			imc.AppendFile(account, localmbname, directory+separ+finf.Name(), allowDup, keepOrig)
 		}
 	}
@@ -349,16 +347,16 @@ func GetHighestUID(account string, localmbname string) uint32 {
 	huid := uint32(0)
 	r := db.QueryRow("select MAX(u) from messages where a=? and m=?", account, localmbname)
 	r.Scan(&huid)
-	fmt.Println("GetHighestUID a="+account+" m="+localmbname+" = ", huid)
+	println("GetHighestUID a="+account+" m="+localmbname+" = "+strconv.Itoa(int(huid)))
 	return huid
 }
 
 func (imc *IMAPConn) FetchNewInMailbox(account string, localmbname string, fromUid uint32) error {
-	fmt.Println("Fetch new in mailbox ", account, "/", localmbname, "...")
+	println("Fetch new in mailbox "+account+"/"+localmbname+"...")
 	if fromUid == 0 {
 		fromUid = GetHighestUID(account, localmbname) + 1
 	}
-	fmt.Println("New is from uid ", fromUid)
+	println("New is from uid ", fromUid)
 	randomtag := "x" + strconv.Itoa(int(rand.Uint64()))
 	imc.WriteLine("x examine " + Mailboxes[account][localmbname])
 	sss, _ := imc.ReadLine("* OK [UIDVALIDITY")
@@ -367,17 +365,17 @@ func (imc *IMAPConn) FetchNewInMailbox(account string, localmbname string, fromU
 	uidvaliditys := strconv.Itoa(int(uidvalidity))
 	storeduidval, _ := ioutil.ReadFile(GetConf("Path") + separ + account + separ + localmbname + separ + "UIDValidity.txt")
 	if string(storeduidval) == "" {
-		fmt.Println("writing new UIDValidity.txt")
+		println("writing new UIDValidity.txt")
 		ioutil.WriteFile(GetConf("Path")+separ+account+separ+localmbname+separ+"UIDValidity.txt", []byte(uidvaliditys), 0600)
 	} else if string(storeduidval) != uidvaliditys {
-		fmt.Println("Ooops ! storeduidval and uidvalidity mismatch, better do nothing storeduidval=", storeduidval, "uidval=", uidvaliditys)
+		println("Ooops ! storeduidval and uidvalidity mismatch, better do nothing storeduidval=", storeduidval, "uidval=", uidvaliditys)
 		return errors.New("storeduidval and uidvalidity mismatch")
 	} else {
-		fmt.Println("UIDValidity ok")
+		println("UIDValidity ok")
 	}
 
-	uidToFetch := make([]uint32, 65536)
-	sizesToFetch := make([]uint32, 65536)
+	uidToFetch := make([]uint32, 0, 65536)
+	sizesToFetch := make([]uint32, 0, 65536)
 	var d int
 	i := 0
 	imc.ReadLine("x ")
@@ -388,13 +386,16 @@ func (imc *IMAPConn) FetchNewInMailbox(account string, localmbname string, fromU
 			break
 		}
 		if strings.Index(ss, "FETCH") >= 0 {
-			fmt.Println("scanning ", ss)
-			fmt.Sscanf(ss, "* %d FETCH (UID %d RFC822.SIZE %d)", &d, &uidToFetch[i], &sizesToFetch[i])
+			println("scanning ", ss)
+			var x,y uint32
+			fmt.Sscanf(ss, "* %d FETCH (UID %d RFC822.SIZE %d)", &d, &x, &y)
+			uidToFetch=append(uidToFetch, x)
+			sizesToFetch=append(sizesToFetch, y)
 			if uidToFetch[i] < fromUid {
-				fmt.Println("breaking !")
+				println("breaking !")
 				break
 			}
-			fmt.Println("to fetch ", i, "uid=", uidToFetch[i], "size=", sizesToFetch[i])
+			println("to fetch ", i, "uid=", uidToFetch[i], "size=", sizesToFetch[i])
 			i++
 		}
 	}
@@ -403,7 +404,7 @@ func (imc *IMAPConn) FetchNewInMailbox(account string, localmbname string, fromU
 		cnts := strings.Split(string(cnt), "\n")
 		for _, cntt := range cnts {
 			fmt.Sscanf(cntt, "%d", &uidToFetch[i])
-			fmt.Println("add to fetch cntt=", cntt, " uid=", uidToFetch[i])
+			println("add to fetch cntt=", cntt, " uid=", uidToFetch[i])
 			i++
 		}
 		os.Remove(GetConf("Path") + separ + account + separ + localmbname + separ + "tofetch")
@@ -412,83 +413,38 @@ func (imc *IMAPConn) FetchNewInMailbox(account string, localmbname string, fromU
 	i = 0
 	for i < nToFetch {
 		var uid, leng int
-		fmt.Println("fetching ", i, "/ ", nToFetch-1, "...\n")
+		println("fetching ", i, "/ ", nToFetch-1, "...")
 		imc.WriteLine(randomtag + " uid fetch " + strconv.Itoa(int(uidToFetch[i])) + " rfc822")
 		s, _ := imc.ReadLine("* ")
-		/*
-			if strings.Index(s, randomtag) == 0 {
-				fmt.Println("?!! beaking")
-				break
-			} */
 		fmt.Sscanf(s, "* %d FETCH (UID %d RFC822 {%d", &d, &uid, &leng)
-		fmt.Println("got uid:", uid, " length:", leng)
+		println("got uid:", uid, " length:", leng)
 		content := make([]byte, leng)
 		_, err := io.ReadAtLeast(imc.RW, content, leng)
 		if err != nil {
-			fmt.Println("error ReadAtLeast, can't continue : ", err)
+			println("error ReadAtLeast, can't continue : ", err)
 			return err
 		}
 		imc.ReadLine(randomtag)
-		fmt.Println("writing to file...")
+		println("writing to file...")
 		err = ioutil.WriteFile(GetConf("Path")+separ+account+separ+localmbname+separ+strconv.Itoa(int(uid)), content, 0600)
 		if err != nil {
-			fmt.Println("error WriteFile, can't continue : ", err)
+			println("error WriteFile, can't continue : ", err)
 			return err
 		}
-		fmt.Println("inserting into index...")
+		println("inserting into index...")
 		ie := MakeIEFromFile(GetConf("Path") + separ + account + separ + localmbname + separ + strconv.Itoa(int(uid)))
 		ie.U = uint32(uid)
 		ie.A = account
 		ie.M = localmbname
-		/*
-			if HasMessageID(ie.I, ie.A) {
-				fmt.Println("MID "+ie.I+" was already in index (foreign move ?)")
-				fmt.Println("keeping both for now")
-			} */
 		dbAppend(ie)
 		i++
 	}
 	return nil
 }
 
-/*
-func (imc *IMAPConn) BlockIdle(mbox string) (err error) {
-	imc.WriteLine("x examine " + mbox)
-	imc.ReadLine("x ")
-	imc.WriteLine("x idle")
-	imc.ReadLine("+ ")
-	finished := false
-	go func() {
-		for !finished {
-			fmt.Println("blockidle : sleeping...")
-			time.Sleep(12*60*time.Second)
-			fmt.Println("blockidle: end sleeping")
-			if !finished {
-				err:=imc.WriteLine("DONE")
-				if err!=nil {
-					finished=true
-				}
-				imc.WriteLine("x idle")
-			}
-			fmt.Println("blockidle: going back to sleep")
-		}
-	}()
-	for !finished {
-		s, err := imc.ReadLine("* ")
-		finished = (err != nil) || strings.Contains(s, "EXIST")
-	}
-	if err != nil {
-		return
-	}
-	imc.WriteLine("DONE")
-	_, err = imc.ReadLine("x OK")
-	return
-}
-*/
-
 func (imc *IMAPConn) MoveInMailbox(account string, localmbname string) error {
 	path := GetConf("Path") + separ + account + separ + localmbname + separ + "moves"
-	fmt.Println("performing moves in ", path, "...")
+	println("performing moves in ", path, "...")
 	mboxselected := false
 	finfs, _ := ioutil.ReadDir(path)
 	doExpunge := false
@@ -500,7 +456,7 @@ func (imc *IMAPConn) MoveInMailbox(account string, localmbname string) error {
 				mboxselected = true
 			}
 			dest, _ := ioutil.ReadFile(path + separ + finf.Name())
-			fmt.Println("moving ", finf.Name(), " to ", string(dest))
+			println("moving ", finf.Name(), " to ", string(dest))
 			if strings.Index(string(dest), "KILL") == 0 {
 				imc.WriteLine("x uid store " + finf.Name() + " flags \\Deleted")
 				imc.ReadLine("x ")
@@ -508,10 +464,10 @@ func (imc *IMAPConn) MoveInMailbox(account string, localmbname string) error {
 				//imc.WriteLine("x expunge")
 				//imc.ReadLine("x ")
 				fname := GetConf("Path") + separ + account + separ + localmbname + separ + finf.Name()
-				fmt.Println("removing ", fname)
+				println("removing ", fname)
 				err := os.Remove(fname)
 				if err != nil {
-					fmt.Println("removing failed : ", err)
+					println("removing failed : ", err)
 				}
 				uid2kill, _ := strconv.Atoi(finf.Name())
 				dbDelete(uint32(uid2kill), account, localmbname)
@@ -519,13 +475,13 @@ func (imc *IMAPConn) MoveInMailbox(account string, localmbname string) error {
 				if GetConfS(account+".imap", "HasUIDMove") == "1" {
 					imc.WriteLine("x uid move " + finf.Name() + " " + Mailboxes[account][string(dest)])
 				} else {
-					fmt.Println("move by copy and kill...")
+					println("move by copy and kill...")
 					imc.WriteLine("x uid copy " + finf.Name() + " " + Mailboxes[account][string(dest)])
 				}
 				var d, olduid, uid uint32
 				s, _ := imc.ReadLine("x OK")
 				fmt.Sscanf(s, "x OK [COPYUID %d %d %d", &d, &olduid, &uid)
-				fmt.Println("uid in orig folder is ", olduid, " uid in dest folder is ", uid)
+				println("uid in orig folder is ", olduid, " uid in dest folder is ", uid)
 				if GetConfS(account+".imap", "HasUIDMove") != "1" && olduid != 0 && uid != 0 {
 					olduids := strconv.Itoa(int(olduid))
 					imc.WriteLine("x uid store " + olduids + " flags \\Deleted")
@@ -533,13 +489,13 @@ func (imc *IMAPConn) MoveInMailbox(account string, localmbname string) error {
 					doExpunge = true
 					//imc.WriteLine("x expunge")
 					//imc.ReadLine("x OK")
-					fmt.Println("killed old")
+					println("killed old")
 				}
 				newuids := strconv.Itoa(int(uid))
 				err := os.Rename(GetConf("Path")+separ+account+separ+localmbname+separ+finf.Name(), GetConf("Path")+separ+account+separ+string(dest)+separ+newuids)
 				if err != nil {
-					fmt.Println("error during local rename : ", err)
-					fmt.Println("local index not updated")
+					println("error during local rename : ", err)
+					println("local index not updated")
 				} else {
 					//	dbDelete(olduid, account, localmbname)
 					db.Exec("update messages set u=?, m=? where u=? and m=? and a=?",
@@ -577,7 +533,7 @@ func startIMAPLoop(acc string) {
 	accparam := configs.Options()
 	imapconn, err := Login(accparam)
 	if err != nil {
-		fmt.Println("login error, skipping account ", acc)
+		println("login error, skipping account ", acc)
 	} else {
 		for mbox, _ := range Mailboxes[acc] {
 			imapconn.FetchNewInMailbox(acc, mbox, 0)
@@ -590,63 +546,14 @@ func startIMAPLoop(acc string) {
 	}
 }
 
-/*
-func IdlerAll() {
-	sects, _ := Config.Find(".imap$")
-	for _,section := range sects {
-		accName:=section.Name()
-		accName=strings.Replace(accName,".imap","",-1)
-		if idler_started[accName] {
-			continue
-		}
-		go func(acc string, section (*configparser.Section)) {
-			hash_mutex.Lock()
-			idler_started[acc]=true
-			hash_mutex.Unlock()
-			imapconn, err := Login(section.Options())
-			if err != nil {
-				fmt.Println("*** idler first login error, stopping idling for ", acc, " ***")
-				hash_mutex.Lock()
-				idler_started[acc]=false
-				hash_mutex.Unlock()
-				return
-			}
-			for true {
-				fmt.Println("IdlerAll: calling BlockIdle")
-				err = imapconn.BlockIdle("inbox")
-				fmt.Println("IdlerAll: BlockIdle returned")
-				if err == nil {
-					imapconn.FetchNewInMailbox(acc, "inbox", 0)
-				} else {
-					fmt.Println("*** idler for ", acc, " relogin...")
-					imapconn, err = Login(section.Options())
-					if err != nil {
-						fmt.Println("*** idler relogin error, stopping idling for ", acc, " ***")
-						hash_mutex.Lock()
-						idler_started[acc]=false
-						hash_mutex.Unlock()
-						break
-					}
-				}
-				fmt.Println("IdlerAll: after if-FetchNew/else")
-			}
-		}(accName,section)
-	}
-}
-*/
-
 func SyncerMain() {
 	separ = string(filepath.Separator)
 	SyncerMkdirs()
-	fmt.Println("SyncerMain starting at ", time.Now().Format(time.ANSIC))
+	println("SyncerMain starting at ", time.Now().Format(time.ANSIC))
 	for acc, _ := range Mailboxes {
 		startIMAPLoop(acc)
 	}
-	/*
-		fmt.Println("SyncerMain : Starting idlers")
-		IdlerAll()
-	*/
-	fmt.Println("SyncerMain stopping at ", time.Now().Format(time.ANSIC))
+	println("SyncerMain stopping at ", time.Now().Format(time.ANSIC))
 	syncChan <- 1
 }
 
@@ -655,7 +562,7 @@ func SyncerQuick(acc string, mbox string) {
 	accparam := configs.Options()
 	imapconn, err := Login(accparam)
 	if err != nil {
-		fmt.Println("login error, skipping account ", acc)
+		println("login error, skipping account ", acc)
 	} else {
 		imapconn.FetchNewInMailbox(acc, mbox, 0)
 	}

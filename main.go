@@ -13,6 +13,7 @@ import (
 	"github.com/jhillyerd/enmime"
 	_ "github.com/mattn/go-sqlite3"
 	"html"
+	"io"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
@@ -132,7 +133,7 @@ func HdlCmd(r http.ResponseWriter, q *http.Request) {
 		fnam := GetConf("Path") + separ + subjectspl[0] + separ + subjectspl[1] + separ + "moves" + separ + subjectspl[2]
 		cnt := []byte(movedest)
 		err := ioutil.WriteFile(fnam, cnt, 0660)
-		fmt.Fprint(r, "wrote "+string(cnt)+" in "+fnam+" ", err)
+		io.WriteString(r, "wrote "+string(cnt)+" in "+fnam+" "+err.Error())
 		return
 	}
 
@@ -142,7 +143,7 @@ func HdlCmd(r http.ResponseWriter, q *http.Request) {
 
 	outstr := ListMessagesHTML(query, GetConf("Path"), q.FormValue("sort"))
 
-	fmt.Fprintf(r, outstr)
+	io.WriteString(r, outstr)
 }
 
 func GetMessageFile(r http.ResponseWriter, q *http.Request) (*os.File, string) {
@@ -150,7 +151,7 @@ func GetMessageFile(r http.ResponseWriter, q *http.Request) (*os.File, string) {
 	fname := GetConf("Path") + separ + id
 	file, err2 := os.Open(fname)
 	if err2 != nil {
-		fmt.Fprint(r, "Can't open "+fname)
+		io.WriteString(r, "Can't open "+fname)
 		return nil, ""
 	}
 	return file, fname
@@ -172,7 +173,7 @@ func HdlRead(r http.ResponseWriter, q *http.Request) {
 
 	mail, err2 := enmime.ReadEnvelope(bufio.NewReader(file))
 	if err2 != nil {
-		fmt.Fprint(r, "Can't parse mail id "+id)
+		io.WriteString(r, "Can't parse mail id "+id)
 		return
 	}
 
@@ -195,27 +196,27 @@ func HdlRead(r http.ResponseWriter, q *http.Request) {
 		return
 	}
 
-	fmt.Fprint(r, "<div id=headers><table><tr><td><b>From</b><td>"+html.EscapeString(mail.GetHeader("From"))+
+	io.WriteString(r, "<div id=headers><table><tr><td><b>From</b><td>"+html.EscapeString(mail.GetHeader("From"))+
 		"<tr><td><b>To</b><td>"+html.EscapeString(mail.GetHeader("To")+", "+mail.GetHeader("Cc"))+
 		"<tr><td><b>Subject</b><td>"+html.EscapeString(mail.GetHeader("Subject"))+
 		"<tr><td><b>Date</b><td>"+html.EscapeString(mail.GetHeader("Date"))+"</table>")
 	_ = fname
-	fmt.Fprint(r, "<div id=attachments><a href=/read?source=1&id="+url.QueryEscape(id)+" target=_new>src</a> <a href=/read?html=1&id="+url.QueryEscape(id)+" target=_new>html</a><br>")
+	io.WriteString(r, "<div id=attachments><a href=/read?source=1&id="+url.QueryEscape(id)+" target=_new>src</a> <a href=/read?html=1&id="+url.QueryEscape(id)+" target=_new>html</a><br>")
 	for _, att := range append(mail.Attachments, mail.Inlines...) {
 		url := "/attachget?id=" + url.QueryEscape(id) + "&cid=" + url.QueryEscape(att.FileName)
 		url1 := url + "&mode=inline"
 		url2 := url + "&mode=attach"
-		fmt.Fprint(r, "<a href="+url1+" target=_new>"+att.FileName+"</a> ("+att.ContentType+") <a href="+url2+" target=_new>[dl]</a><br>")
+		io.WriteString(r, "<a href="+url1+" target=_new>"+att.FileName+"</a> ("+att.ContentType+") <a href="+url2+" target=_new>[dl]</a><br>")
 	}
 
-	fmt.Fprint(r, "</div></div><div id=mailbody>")
+	io.WriteString(r, "</div></div><div id=mailbody>")
 	htmlmail := string(mail.HTML)
 	if htmlmail == "" {
 		htmlmail = string(mail.Text)
 		htmlmail = strings.ReplaceAll(htmlmail, "\n", "<br>")
 	}
 	htmlmail = strings.ReplaceAll(htmlmail, "<base", "<ignore-base")
-	fmt.Fprint(r, htmlmail+"</div>")
+	io.WriteString(r, htmlmail+"</div>")
 
 }
 
@@ -249,7 +250,7 @@ func HdlReplytemplate(r http.ResponseWriter, q *http.Request) {
 	_ = fname
 	mail, err2 := enmime.ReadEnvelope(bufio.NewReader(file))
 	if err2 != nil {
-		fmt.Fprint(r, "Can't parse mail id "+id+" ", err2)
+		io.WriteString(r, "Can't parse mail id "+id+" "+err2.Error())
 		return
 	}
 	replyto := ""
@@ -282,19 +283,19 @@ func HdlReplytemplate(r http.ResponseWriter, q *http.Request) {
 			break
 		}
 	}
-	fmt.Fprint(r, replyidentity+"\r\n"+
+	io.WriteString(r, replyidentity+"\r\n"+
 		"To: "+replyto+"\r\n"+
 		"Cc: \r\n"+
 		"Subject: "+subjectre+"\r\n")
 	if !fwdMode && !fwdMode2 {
-		fmt.Fprint(r, "In-reply-to: "+mail.GetHeader("Message-ID")+"\r\n")
+		io.WriteString(r, "In-reply-to: "+mail.GetHeader("Message-ID")+"\r\n")
 	}
-	fmt.Fprint(r, "References: "+mail.GetHeader("Message-ID")+" "+mail.GetHeader("References")+"\r\n")
+	io.WriteString(r, "References: "+mail.GetHeader("Message-ID")+" "+mail.GetHeader("References")+"\r\n")
 
-	fmt.Fprint(r, "@endheaders\r\n\r\n\r\n")
+	io.WriteString(r, "@endheaders\r\n\r\n\r\n")
 
 	if !fwdMode && !fwdMode2 {
-		fmt.Fprint(r, "\r\n--- Original message ---\r\n"+
+		io.WriteString(r, "\r\n--- Original message ---\r\n"+
 			"From: "+mail.GetHeader("From")+"\r\n"+
 			"To: "+mail.GetHeader("To")+"\r\n"+
 			"Cc: "+mail.GetHeader("Cc")+"\r\n"+
@@ -303,7 +304,7 @@ func HdlReplytemplate(r http.ResponseWriter, q *http.Request) {
 	}
 
 	if fwdMode {
-		fmt.Fprint(r, "\r\n@attachments "+id)
+		io.WriteString(r, "\r\n@attachments "+id)
 	}
 }
 
@@ -317,7 +318,7 @@ func HdlAttachGet(r http.ResponseWriter, q *http.Request) {
 	file, _ := GetMessageFile(r, q)
 	mail, err2 := enmime.ReadEnvelope(bufio.NewReader(file))
 	if err2 != nil {
-		fmt.Fprint(r, "Can't parse mail")
+		io.WriteString(r, "Can't parse mail")
 		return
 	}
 	for _, att := range append(mail.Attachments, mail.Inlines...) {
@@ -328,11 +329,11 @@ func HdlAttachGet(r http.ResponseWriter, q *http.Request) {
 			} else {
 				r.Header().Set("Content-Disposition", "inline; filename=\""+att.FileName+"\"")
 			}
-			fmt.Fprintf(r, "%s", att.Content)
+			io.WriteString(r, string(att.Content))
 			return
 		}
 	}
-	fmt.Fprint(r, "CID not found in mail")
+	io.WriteString(r, "CID not found in mail")
 }
 
 func headerStr(header string, value string) (s string) {
@@ -463,14 +464,12 @@ func Sendmail_OAuth(host string, user string, token string, from string, to []st
 		resp, err := http.PostForm("https://oauth2.googleapis.com/token", values)
 
 		if err != nil {
-			retstr := fmt.Sprintf("error refreshing token", err)
-			return retstr
+			return "error refreshing token"+err.Error()
 		}
 		var v map[string]interface{}
 		decoder := json.NewDecoder(resp.Body)
 		if err := decoder.Decode(&v); err != nil {
-			retstr := fmt.Sprintf("2error parsing json", err)
-			return retstr
+			return "2error parsing json"+err.Error()
 		}
 		w = fmt.Sprintf("user=%s\001auth=Bearer %s\001\001", user, v["access_token"].(string))
 		w = base64.StdEncoding.EncodeToString([]byte(w))
@@ -619,9 +618,9 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 	}
 	er := ioutil.WriteFile(outId["OutFolder"]+separ+boundary, []byte(composeText), 0600)
 	if er != nil {
-		fmt.Fprint(r, status, " - copy failed: ", er)
+		io.WriteString(r, status+" - copy failed: "+er.Error())
 	} else {
-		fmt.Fprint(r, status, " - copy ok")
+		io.WriteString(r, status+" - copy ok")
 	}
 }
 
@@ -639,7 +638,7 @@ func HdlResync(r http.ResponseWriter, q *http.Request) {
 	} else {
 		SyncerMain()
 	}
-	fmt.Fprint(r, "ok")
+	io.WriteString(r, "ok")
 }
 
 func HdlIdler(r http.ResponseWriter, q *http.Request) {
@@ -655,15 +654,16 @@ func HdlIdler(r http.ResponseWriter, q *http.Request) {
 	}
 }
 
+/*
 func HdlTokens(r http.ResponseWriter, q *http.Request) {
 	if !HookAuth(r, q) {
 		return
 	}
 	r.Header().Set("Content-type", "text/plain")
 	r.Header().Set("Content-disposition", "inline")
-	fmt.Fprintln(r, oauthCache)
-	fmt.Fprintln(r, oauthTimestamp)
-}
+	io.WriteString(r, oauthCache)
+	io.WriteString(r, oauthTimestamp)
+} */
 
 func HdlAbook(r http.ResponseWriter, q *http.Request) {
 	if !HookAuth(r, q) {
@@ -672,7 +672,7 @@ func HdlAbook(r http.ResponseWriter, q *http.Request) {
 	r.Header().Set("Content-type", "text/html; charset=utf8")
 	rows, _ := db.Query("select distinct f from messages")
 	var to string
-	addrs := make(sort.StringSlice, 0)
+	addrs := make(sort.StringSlice, 0, 128)
 	for rows.Next() {
 		rows.Scan(&to)
 		to = strings.ToLower(strings.ReplaceAll(to, "\"", ""))
@@ -734,7 +734,6 @@ func main() {
 	http.HandleFunc("/send", HdlSend)
 	http.HandleFunc("/resync", HdlResync)
 	http.HandleFunc("/idler", HdlIdler)
-	http.HandleFunc("/tokens", HdlTokens)
 	http.HandleFunc("/abook", HdlAbook)
 	err = http.ListenAndServe("127.0.0.1:1336", nil)
 	if err != nil {
