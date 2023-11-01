@@ -125,7 +125,9 @@ func HdlCmd(r http.ResponseWriter, q *http.Request) {
 		fnam := GetConf("Path") + separ + subjectspl[0] + separ + subjectspl[1] + separ + "moves" + separ + subjectspl[2]
 		cnt := []byte(movedest)
 		err := ioutil.WriteFile(fnam, cnt, 0660)
-		io.WriteString(r, "wrote "+string(cnt)+" in "+fnam+" "+err.Error())
+		if err != nil {
+			io.WriteString(r, "wrote "+string(cnt)+" in "+fnam+" "+err.Error())
+		}
 		return
 	}
 

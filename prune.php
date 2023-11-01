@@ -31,11 +31,13 @@ function list_db($db, $config, $mbox) {
 }
 
 function prune_db($db, $config, $mbox, $list) {
+	$db->exec("begin transaction");
 	$qry="";
 	foreach($list as $id) {
 		$qry.="DELETE FROM messages WHERE a='".$db->escapeString($config['cmAcc'])."' and m='".$db->escapeString($mbox)."' and u=".$id.";";
 	}
 	$db->exec($qry);
+	$db->exec("commit");
 	return($qry);
 }
 
