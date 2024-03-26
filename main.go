@@ -182,7 +182,11 @@ func HdlRead(r http.ResponseWriter, q *http.Request) {
 
 		htmlmail := string(mail.HTML)
 		if htmlmail == "" {
-			htmlmail = "<pre>" + string(mail.Text) + "</pre>"
+			mailtext := string(mail.Text)
+			mailtext = strings.ReplaceAll(mailtext, "<", "&lt;")
+			mailtext = strings.ReplaceAll(mailtext, ">", "&gt;")
+			mailtext = strings.ReplaceAll(mailtext, "&", "&amp;")
+			htmlmail = "<pre>" + mailtext + "</pre>"
 			//htmlmail = strings.ReplaceAll(htmlmail, "\n", "<br>")
 		}
 		htmlmail = strings.ReplaceAll(htmlmail, "<base", "<ignore-base")
@@ -377,7 +381,7 @@ func addAttach(r http.ResponseWriter, q *http.Request, suffix string, boundary s
 		"Content-Disposition: attachment; filename=\"" + mpfh.Filename + "\"\r\n" +
 		"Content-Type: " + mpfh.Header.Get("Content-Type") + "; name=\"" + mpfh.Filename + "\"\r\n" +
 		"Content-Transfer-Encoding: base64\r\n\r\n" +
-		split(base64.StdEncoding.EncodeToString(d), 76)
+		split(base64.StdEncoding.EncodeToString(d), 998)
 }
 
 func readStr(rw *bufio.ReadWriter) string {
@@ -414,18 +418,22 @@ func Sendmail(host string, user string, pass string, from string, to []string, d
 	readStr(rw)
 	rw.WriteString("EHLO x\r\n")
 	readStr(rw)
+	/*
 	rw.WriteString("AUTH LOGIN\r\n")
 	readStr(rw)
 	rw.WriteString(base64.StdEncoding.EncodeToString([]byte(user)) + "\r\n")
 	readStr(rw)
 	rw.WriteString(base64.StdEncoding.EncodeToString([]byte(pass)) + "\r\n")
 	readStr(rw)
+	*/
+	rw.WriteString("AUTH PLAIN "+base64.StdEncoding.EncodeToString([]byte("\000"+user+"\000"+pass))+"\r\n")
+	//readStr(rw)
 	rw.WriteString("MAIL FROM:<" + from + "> BODY=8BITMIME\r\n")
-	readStr(rw)
+	//readStr(rw)
 	fmt.Println("RCPT TO = ", to)
 	for _, toaddr := range to {
 		rw.WriteString("RCPT TO:<" + toaddr + ">\r\n")
-		readStr(rw)
+		//readStr(rw)
 	}
 	rw.WriteString("DATA\r\n")
 	readStr(rw)
@@ -476,12 +484,12 @@ func Sendmail_OAuth(host string, user string, token string, from string, to []st
 
 	rw.WriteString("auth xoauth2 " + w + "\r\n")
 	readStr(rw)
-	rw.WriteString("mail from:<" + from + ">\r\n")
-	readStr(rw)
+	rw.WriteString("mail from:<" + from + "> BODY=8BITMIME\r\n")
+	//readStr(rw)
 	fmt.Println("RCPT TO = ", to)
 	for _, toaddr := range to {
 		rw.WriteString("rcpt to:<" + toaddr + ">\r\n")
-		readStr(rw)
+		//readStr(rw)
 	}
 	rw.WriteString("data\r\n")
 	readStr(rw)
@@ -555,17 +563,6 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 			composeText = composeText + header + "\n"
 		}
 		if headerval != "" && headerval != " " && headerval != "\r" && headerval != "\n" {
-			/*b:=new(strings.Builder)
-			qpw:=quotedprintable.NewWriter(b)
-			qpw.Write([]byte(headerval))
-			qpw.Close()
-			fmt.Println("after encoding: ",b.String())
-			beginenc:=""
-			endenc:=""
-			if(b.String()!=headerval) {
-				beginenc="=?utf8?Q?"
-				endenc="?="
-			} */
 			composeText = composeText + headername + ": " + mimeQPEncode(headerval) + "\r\n" //beginenc+b.String()+endenc+"\r\n"
 		}
 	}

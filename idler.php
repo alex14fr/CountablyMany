@@ -30,16 +30,18 @@ function mainloop($config) {
 		if(!$fh) {
 			ts();print "Error connecting\n";
 			sleep(30);
+			continue;
 		}
-		if($config['xoauth2_cmd'] && !$config['xoauth2_enc_token']) {
-			ts(); print "Fetching xoauth2 token...";
-			$config['xoauth2_enc_token']=base64_encode("user=".$config['login']."\x01auth=Bearer ".system($config['xoauth2_cmd'])."\x01\x01");
-			//print $config['xoauth2_enc_token']."\n";
-		}
-		if($config['xoauth2_enc_token']) {
+		if(isset($config['xoauth2_cmd'])) {
+			if(!isset($token_iat) || time()-$token_iat > 1900) {
+				ts(); print "Fetching xoauth2 token...";
+				$config['xoauth2_enc_token']=base64_encode("user=".$config['login']."\x01auth=Bearer ".system($config['xoauth2_cmd'])."\x01\x01");
+				$token_iat=time();
+				//print $config['xoauth2_enc_token']."\n";
+			}
 			fwrite($fh, "x authenticate xoauth2 ".$config['xoauth2_enc_token']."\r\n");
-		} 
-		if($config['passwd']) {
+		}
+		else { 
 			fwrite($fh, "x login ".$config['login']." ".$config['passwd']."\r\n");
 		}
 		readl($fh);
