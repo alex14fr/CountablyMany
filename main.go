@@ -183,9 +183,6 @@ func HdlRead(r http.ResponseWriter, q *http.Request) {
 		htmlmail := string(mail.HTML)
 		if htmlmail == "" {
 			mailtext := string(mail.Text)
-			mailtext = strings.ReplaceAll(mailtext, "<", "&lt;")
-			mailtext = strings.ReplaceAll(mailtext, ">", "&gt;")
-			mailtext = strings.ReplaceAll(mailtext, "&", "&amp;")
 			htmlmail = "<pre>" + mailtext + "</pre>"
 			//htmlmail = strings.ReplaceAll(htmlmail, "\n", "<br>")
 		}
@@ -211,6 +208,9 @@ func HdlRead(r http.ResponseWriter, q *http.Request) {
 	htmlmail := string(mail.HTML)
 	if htmlmail == "" {
 		htmlmail = string(mail.Text)
+		htmlmail = strings.ReplaceAll(htmlmail, "&", "&amp;")
+		htmlmail = strings.ReplaceAll(htmlmail, "<", "&lt;")
+		htmlmail = strings.ReplaceAll(htmlmail, ">", "&gt;")
 		htmlmail = strings.ReplaceAll(htmlmail, "\n", "<br>")
 	}
 	htmlmail = strings.ReplaceAll(htmlmail, "<base", "<ignore-base")
