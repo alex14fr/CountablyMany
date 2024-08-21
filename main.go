@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -603,12 +604,29 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 	}
 
 	var status string
-	if token, tokenpresent := outId["GMailToken"]; tokenpresent {
-		fmt.Println("Sendmail using OAuth....")
-		status = Sendmail_OAuth(outId["SMTPHost"], outId["SMTPUser"], token, from, toaddr, composeText)
+	if pipecmd, pipecmdpresent := outId["SMTPPipe"]; pipecmdpresent {
+		pipcmds := strings.Split(pipecmd, " ")
+		cmd := exec.Command(pipcmds[0], pipcmds[1:]...)
+		stdin, _ := cmd.StdinPipe()
+		go func() {
+			defer stdin.Close()
+			io.WriteString(stdin, composeText)
+		}()
+		out, _ := cmd.CombinedOutput()
+		io.WriteString(r, string(out))	
 	} else {
-		status = Sendmail(outId["SMTPHost"], outId["SMTPUser"], outId["SMTPPass"], from, toaddr, composeText)
+		if token, tokenpresent := outId["GMailToken"]; tokenpresent {
+			fmt.Println("Sendmail using OAuth....")
+				if envfrom, envfrompresent := outId["EnvelopeFrom"]; envfrompresent {
+					status = Sendmail_OAuth(outId["SMTPHost"], outId["SMTPUser"], token, envfrom, toaddr, composeText)
+				} else {
+					status = Sendmail_OAuth(outId["SMTPHost"], outId["SMTPUser"], token, from, toaddr, composeText)
+				}
+		} else {
+			status = Sendmail(outId["SMTPHost"], outId["SMTPUser"], outId["SMTPPass"], from, toaddr, composeText)
+		}
 	}
+
 	er := ioutil.WriteFile(outId["OutFolder"]+separ+boundary, []byte(composeText), 0600)
 	if er != nil {
 		io.WriteString(r, status+" - copy failed: "+er.Error())

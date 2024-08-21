@@ -14,6 +14,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math/rand"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -88,7 +89,7 @@ func (imc *IMAPConn) WriteLine(s string) (err error) {
 func Login(acc map[string]string) (imapconn *IMAPConn, err error) {
 	imapconn = new(IMAPConn)
 	println(acc["Server"])
-	conn, err := tls.Dial("tcp", acc["Server"], &tls.Config{})
+	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 5e9}, "tcp", acc["Server"], &tls.Config{})
 	if err != nil {
 		fmt.Print(err)
 		return
