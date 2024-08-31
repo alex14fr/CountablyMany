@@ -89,6 +89,10 @@ func (imc *IMAPConn) WriteLine(s string) (err error) {
 func Login(acc map[string]string) (imapconn *IMAPConn, err error) {
 	imapconn = new(IMAPConn)
 	println(acc["Server"])
+	if strings.Contains(acc["Server"], "*NO*") {
+		println("(skip)")
+		return nil, errors.New("skip")
+	}
 	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 5e9}, "tcp", acc["Server"], &tls.Config{})
 	if err != nil {
 		fmt.Print(err)
@@ -98,18 +102,29 @@ func Login(acc map[string]string) (imapconn *IMAPConn, err error) {
 	imapconn.RW = bufio.NewReadWriter(bufio.NewReader(imapconn.Conn), bufio.NewWriter(imapconn.Conn))
 	imapconn.ReadLine("")
 	var w string
-	if token, tokenpresent := acc["GMailToken"]; tokenpresent {
+	token, tokenpresent := acc["GMailToken"]
+	o365tok, o365present := acc["O365Token"]
+	if tokenpresent || o365present {
 		if oauthtok, tokcached := oauthCache[acc["Server"]]; tokcached && oauthTimestamp[acc["Server"]] > time.Now().Unix()-3000 {
 			fmt.Println("reusing cached oauth token")
 			w = oauthtok
 		} else {
 			fmt.Println("refreshing oauth token")
 			values := url.Values{}
-			values.Set("client_id", GetConf("GMailClientId"))
-			values.Set("client_secret", GetConf("GMailClientSecret"))
-			values.Set("grant_type", "refresh_token")
-			values.Set("refresh_token", token)
-			resp, err := http.PostForm("https://oauth2.googleapis.com/token", values)
+			var tokenendpoint string
+			if tokenpresent {
+				values.Set("client_id", GetConf("GMailClientId"))
+				values.Set("client_secret", GetConf("GMailClientSecret"))
+				values.Set("grant_type", "refresh_token")
+				values.Set("refresh_token", token)
+				tokenendpoint="https://oauth2.googleapis.com/token"
+			} else if o365present {
+				values.Set("client_id", "9e5f94bc-e8a4-4e73-b8be-63364c29d753")
+				values.Set("grant_type", "refresh_token")
+				values.Set("refresh_token", o365tok)
+				tokenendpoint="https://login.microsoftonline.com/common/oauth2/v2.0/token"
+			}
+			resp, err := http.PostForm(tokenendpoint, values)
 			if err != nil {
 				println("error refreshing token" + err.Error())
 				return nil, err
@@ -388,14 +403,28 @@ func (imc *IMAPConn) FetchNewInMailbox(account string, localmbname string, fromU
 		}
 		if strings.Index(ss, "FETCH") >= 0 {
 			println("scanning ", ss)
+			var xx, yy int
 			var x, y uint32
-			fmt.Sscanf(ss, "* %d FETCH (UID %d RFC822.SIZE %d)", &d, &x, &y)
+			i1 := strings.Index(ss, "(")
+			i2 := strings.Index(ss, ")")
+			ss=ss[i1:i2]
+			sss := strings.Split(ss, " ")
+			if strings.Contains(sss[0], "UID") {
+				xx, _=strconv.Atoi(sss[1])
+				yy, _=strconv.Atoi(sss[3])
+			} else {
+				xx, _=strconv.Atoi(sss[3])
+				yy, _=strconv.Atoi(sss[1])
+			}
+			x=uint32(xx)
+			y=uint32(yy)
+			//fmt.Sscanf(ss, "* %d FETCH (UID %d RFC822.SIZE %d)", &d, &x, &y)
 			if x < fromUid {
 				println("breaking !")
 				break
 			}
 			uidToFetch = append(uidToFetch, x)
-			println("to fetch uid=", x)
+			println("to fetch uid=", x, "size=", y)
 		}
 	}
 	cnt, err := os.ReadFile(GetConf("Path") + separ + account + separ + localmbname + separ + "tofetch")
@@ -418,6 +447,10 @@ func (imc *IMAPConn) FetchNewInMailbox(account string, localmbname string, fromU
 		imc.WriteLine(randomtag + " uid fetch " + strconv.Itoa(int(curUid)) + " rfc822")
 		s, _ := imc.ReadLine("* ")
 		fmt.Sscanf(s, "* %d FETCH (UID %d RFC822 {%d", &d, &uid, &leng)
+		if uid==0 && leng==0 {
+			fmt.Sscanf(s, "* %d FETCH (RFC822 {%d", &d, &leng)
+			uid=int(curUid)
+		}
 		println("got uid:", uid, " length:", leng)
 		content := make([]byte, leng)
 		_, err := io.ReadAtLeast(imc.RW, content, leng)
@@ -535,7 +568,7 @@ func startIMAPLoop(acc string) {
 			imapconn.MoveInMailbox(acc, mbox)
 		}
 	}
-	if imapconn.Conn != nil {
+	if imapconn !=nil && imapconn.Conn != nil {
 		imapconn.Conn.Close()
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math/rand"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -403,6 +404,24 @@ func readStr(rw *bufio.ReadWriter) string {
 	return retstr
 }
 
+func readStr2(rw *bufio.ReadWriter) string {
+	rw.Flush()
+	retstr := ""
+	nok := true
+	for nok {
+		l, err := rw.ReadString('\n')
+		if err != nil {
+			fmt.Print("readStr error : ")
+			fmt.Print(err)
+			return "error"
+		}
+		fmt.Print("readStr : " + l)
+		retstr += l
+		nok = string(l[3])=="-"
+	}
+	return retstr
+}
+
 func checkAttach(q *http.Request, v string) bool {
 	_, mpfh, _ := q.FormFile(v)
 	//fmt.Print("checkAttach of ", v, " : ", mpfh != nil)
@@ -445,14 +464,33 @@ func Sendmail(host string, user string, pass string, from string, to []string, d
 	return retstr
 }
 
-func Sendmail_OAuth(host string, user string, token string, from string, to []string, data string) string {
-	conn, err := tls.Dial("tcp", host, &tls.Config{})
-	if err != nil {
-		fmt.Print(err)
-		return "dial error"
+func Sendmail_OAuth(host string, user string, token string, from string, to []string, data string, starttls bool, o365 bool) string {
+	var conn *tls.Conn
+	var err error
+	if !starttls {
+		conn, err = tls.Dial("tcp", host, &tls.Config{})
+		if err != nil {
+			fmt.Print(err)
+			return "dial error"
+		}
+	} else {
+		pconn, er := net.Dial("tcp", host)
+		if er != nil {
+			fmt.Print(err)
+			return "dial error"
+		}
+		prw := bufio.NewReadWriter(bufio.NewReader(pconn), bufio.NewWriter(pconn))
+		readStr2(prw)
+		prw.WriteString("ehlo localhost\r\n")
+		readStr2(prw)
+		prw.WriteString("starttls\r\n")
+		readStr2(prw)
+		conn=tls.Client(pconn, &tls.Config{ServerName: "smtp-mail.outlook.com"})
 	}
 	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
-	readStr(rw)
+	if !starttls {
+		readStr(rw)
+	}
 	rw.WriteString("ehlo localhost\r\n")
 	readStr(rw)
 
@@ -463,11 +501,18 @@ func Sendmail_OAuth(host string, user string, token string, from string, to []st
 		w = oauthtok
 	} else {
 		values := url.Values{}
-		values.Set("client_id", GetConf("GMailClientId"))
-		values.Set("client_secret", GetConf("GMailClientSecret"))
 		values.Set("grant_type", "refresh_token")
+		var tokenendpoint string
+		if !o365 {
+			values.Set("client_id", GetConf("GMailClientId"))
+			values.Set("client_secret", GetConf("GMailClientSecret"))
+			tokenendpoint="https://oauth2.googleapis.com/token"
+		} else {
+			values.Set("client_id", "9e5f94bc-e8a4-4e73-b8be-63364c29d753")
+			tokenendpoint="https://login.microsoftonline.com/common/oauth2/v2.0/token"
+		}
 		values.Set("refresh_token", token)
-		resp, err := http.PostForm("https://oauth2.googleapis.com/token", values)
+		resp, err := http.PostForm(tokenendpoint, values)
 
 		if err != nil {
 			return "error refreshing token" + err.Error()
@@ -617,11 +662,18 @@ func HdlSend(r http.ResponseWriter, q *http.Request) {
 	} else {
 		if token, tokenpresent := outId["GMailToken"]; tokenpresent {
 			fmt.Println("Sendmail using OAuth....")
-				if envfrom, envfrompresent := outId["EnvelopeFrom"]; envfrompresent {
-					status = Sendmail_OAuth(outId["SMTPHost"], outId["SMTPUser"], token, envfrom, toaddr, composeText)
-				} else {
-					status = Sendmail_OAuth(outId["SMTPHost"], outId["SMTPUser"], token, from, toaddr, composeText)
-				}
+			if envfrom, envfrompresent := outId["EnvelopeFrom"]; envfrompresent {
+				status = Sendmail_OAuth(outId["SMTPHost"], outId["SMTPUser"], token, envfrom, toaddr, composeText, false, false)
+			} else {
+				status = Sendmail_OAuth(outId["SMTPHost"], outId["SMTPUser"], token, from, toaddr, composeText, false, false)
+			}
+		} else if token, tokenpresent := outId["O365Token"]; tokenpresent {
+			fmt.Println("Sendmail using OAuth(O365)....")
+			if envfrom, envfrompresent := outId["EnvelopeFrom"]; envfrompresent {
+				status = Sendmail_OAuth(outId["SMTPHost"], outId["SMTPUser"], token, envfrom, toaddr, composeText, true, true)
+			} else {
+				status = Sendmail_OAuth(outId["SMTPHost"], outId["SMTPUser"], token, from, toaddr, composeText, true, true)
+			}
 		} else {
 			status = Sendmail(outId["SMTPHost"], outId["SMTPUser"], outId["SMTPPass"], from, toaddr, composeText)
 		}
