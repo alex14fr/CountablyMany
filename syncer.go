@@ -146,7 +146,6 @@ func Login(acc map[string]string) (imapconn *IMAPConn, err error) {
 		imapconn.WriteLine("x login " + acc["User"] + " " + acc["Pass"])
 	}
 	imapconn.ReadLine("x ")
-	imapconn.WriteLine("x getquotaroot inbox")
 	return
 }
 
@@ -376,7 +375,7 @@ func (imc *IMAPConn) FetchNewInMailbox(account string, localmbname string, fromU
 	}
 	println("New is from uid ", fromUid)
 	randomtag := "x" + strconv.Itoa(int(rand.Uint64()))
-	imc.WriteLine("x examine " + Mailboxes[account][localmbname])
+	imc.WriteLine("x examine \"" + Mailboxes[account][localmbname]+"\"")
 	sss, _ := imc.ReadLine("* OK [UIDVALIDITY")
 	var uidvalidity uint32
 	fmt.Sscanf(sss, "* OK [UIDVALIDITY %d]", &uidvalidity)
@@ -484,7 +483,7 @@ func (imc *IMAPConn) MoveInMailbox(account string, localmbname string) error {
 	for _, finf := range finfs {
 		if !finf.IsDir() {
 			if !mboxselected {
-				imc.WriteLine("x select " + Mailboxes[account][localmbname])
+				imc.WriteLine("x select \"" + Mailboxes[account][localmbname]+"\"")
 				imc.ReadLine("x ")
 				mboxselected = true
 			}
@@ -504,10 +503,10 @@ func (imc *IMAPConn) MoveInMailbox(account string, localmbname string) error {
 				dbDelete(uint32(uid2kill), account, localmbname)
 			} else {
 				if Mailboxes[account]["HasUIDMove"] == "1" {
-					imc.WriteLine("x uid move " + finf.Name() + " " + Mailboxes[account][string(dest)])
+					imc.WriteLine("x uid move " + finf.Name() + " \"" + Mailboxes[account][string(dest)] + "\"")
 				} else {
 					println("move by copy and kill...")
-					imc.WriteLine("x uid copy " + finf.Name() + " " + Mailboxes[account][string(dest)])
+					imc.WriteLine("x uid copy " + finf.Name() + " \"" + Mailboxes[account][string(dest)] + "\"")
 				}
 				var d, olduid, uid uint32
 				s, _ := imc.ReadLine("x OK")

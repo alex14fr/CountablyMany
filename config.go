@@ -55,6 +55,7 @@ func readConfig() {
 					Mailboxes[acc] = make(map[string]string)
 					for _, mbxdef := range strings.Split(val, " ") {
 						mbxdefsplt := strings.Split(mbxdef, "=")
+						mbxdefsplt[1]=strings.ReplaceAll(mbxdefsplt[1], "%20", " ")
 						Mailboxes[acc][mbxdefsplt[0]] = mbxdefsplt[1]
 					}
 				}
