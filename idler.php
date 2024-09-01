@@ -62,10 +62,10 @@ function mainloop($config) {
 				if(!fwrite($fh, "done\r\n")) $connectionok=false;
 				readl($fh);
 			} else {
+				ts(); print "-! Got $ln";
 				if(!fwrite($fh, "done\r\n")) $connectionok=false;
 				readl($fh);
-				ts(); print "- Got $ln";
-				if(strpos($ln,"EXISTS")!==false) {
+				if(strpos($ln,"RECENT")!==false || strpos($ln,"EXISTS")!==false) {
 					system($cmd);
 				}
 				sleep(3);
