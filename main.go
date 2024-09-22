@@ -429,6 +429,8 @@ func checkAttach(q *http.Request, v string) bool {
 }
 
 func Sendmail(host string, user string, pass string, from string, to []string, data string) string {
+	data=strings.ReplaceAll(data,"\r","")
+	data=strings.ReplaceAll(data,"\n","\r\n")
 	conn, err := tls.Dial("tcp", host, &tls.Config{})
 	if err != nil {
 		fmt.Print(err)
@@ -465,6 +467,8 @@ func Sendmail(host string, user string, pass string, from string, to []string, d
 }
 
 func Sendmail_OAuth(host string, user string, token string, from string, to []string, data string, starttls bool, o365 bool) string {
+	data=strings.ReplaceAll(data,"\r","")
+	data=strings.ReplaceAll(data,"\n","\r\n")
 	var conn *tls.Conn
 	var err error
 	if !starttls {
