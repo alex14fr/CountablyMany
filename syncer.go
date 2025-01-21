@@ -135,7 +135,12 @@ func Login(acc map[string]string) (imapconn *IMAPConn, err error) {
 				println("2error parsing json" + err.Error())
 				return nil, err
 			}
-			w = "user=" + acc["User"] + "\001auth=Bearer " + v["access_token"].(string) + "\001\001"
+			actok, actokpresent := v["access_token"]
+			if !actokpresent {
+				println("access_token not found")
+				return nil, err
+			}
+			w = "user=" + acc["User"] + "\001auth=Bearer " + actok.(string) + "\001\001"
 			w = base64.StdEncoding.EncodeToString([]byte(w))
 			oauthCache[acc["Server"]] = w
 			oauthTimestamp[acc["Server"]] = time.Now().Unix()

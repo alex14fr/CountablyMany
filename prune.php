@@ -42,6 +42,7 @@ function prune_db($db, $config, $mbox, $list) {
 }
 
 function mkdir_if_notexist($dir) {
+	print "mkdir $dir\n";
 	return "[ -d \"$dir\" ] || mkdir \"$dir\"; ";
 }
 

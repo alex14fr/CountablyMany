@@ -66,6 +66,7 @@ function mainloop($config) {
 				if(!fwrite($fh, "done\r\n")) $connectionok=false;
 				readl($fh);
 				if(strpos($ln,"RECENT")!==false || strpos($ln,"EXISTS")!==false) {
+					print "system($cmd)\n";
 					system($cmd);
 				}
 				sleep(3);
