@@ -271,8 +271,40 @@ function registerEvtsrc() {
 		}
 }
 
+function selDesti(e) {
+	console.log(e.target.dataset.to);
+	var s=document.getElementById('compose').value;
+	var i=s.indexOf('To: ')
+	if(s[i+4]=='\n') {
+		s=s.substring(0, i+4)+e.target.dataset.to+s.substring(i+4)
+	} else {
+		var j=s.indexOf('\n', i)
+		s=s.substring(0, j)+","+e.target.dataset.to+s.substring(j)
+	}
+	document.getElementById('compose').value=s;
+}
+
+function addDesti(o) {
+	var s='';
+	for(var i=0; i<o.length; i++) { 
+		var l=o[i];
+		s+='<a href=#compose id=add'+i+' data-to="'+l+'">'+l+'</a><br>'; 
+	}
+	document.getElementById('destiB').innerHTML=s; 
+	for(var i=0; i<o.length; i++) {
+		document.getElementById('add'+i).onclick=selDesti; 
+	}
+}
+
+function chgDesti() {
+	var s=document.getElementById('desti').value;
+	if(s.length>3) {
+		fetch("/ab?q="+s).then(r=>r.json()).then(addDesti);
+	}
+}
 function toComposeMode() {
 	composeMode=true;
+	document.getElementById('desti').onkeyup=chgDesti;
 	document.getElementById('msglistContainer').style.display='none';
 	document.getElementById('showmsg').style.display='none';
 	document.getElementById('cmdForm').style.display='none';
@@ -316,3 +348,5 @@ function toComposeMode() {
 	}
 
 }
+
+

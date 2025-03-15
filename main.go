@@ -179,6 +179,7 @@ func HdlRead(r http.ResponseWriter, q *http.Request) {
 
 		hdrs := "<table><tr><td><b>From</b><td>" + html.EscapeString(mail.GetHeader("From")) +
 			"<tr><td><b>To</b><td>" + html.EscapeString(mail.GetHeader("To")+", "+mail.GetHeader("Cc")) +
+			"<tr><td><b>Bcc</b><td>" + html.EscapeString(mail.GetHeader("Bcc")) +
 			"<tr><td><b>Subject</b><td>" + html.EscapeString(mail.GetHeader("Subject")) +
 			"<tr><td><b>Date</b><td>" + html.EscapeString(mail.GetHeader("Date")) + "</table><hr>"
 
@@ -732,6 +733,37 @@ func HdlTokens(r http.ResponseWriter, q *http.Request) {
 	io.WriteString(r, oauthTimestamp)
 } */
 
+func HdlAb(r http.ResponseWriter, q *http.Request) {
+	if !HookAuth(r, q) {
+		return
+	}
+	r.Header().Set("Content-type", "text/json; charset=utf8")
+	rows, _ := db.Query("select distinct f from messages where f like ? order by f", "%"+q.FormValue("q")+"%")
+	var to string
+	r.Write([]byte("["))
+	frst:=true
+	for rows.Next() {
+		rows.Scan(&to)
+		to = strings.ToLower(strings.ReplaceAll(to, "\"", ""))
+		to = strings.ReplaceAll(to, "  ", " ")
+		tosplit := strings.Split(to, "<")
+		if len(tosplit) >= 2 {
+			to = tosplit[1]
+		}
+		to = strings.ReplaceAll(to, ">", "")
+		if to != "" && strings.Index(to, "noreply") != 0 {
+			if !frst {
+				r.Write([]byte(","))
+			}
+			if frst {
+				frst=false
+			}
+			r.Write([]byte("\""+to+"\""))
+		}
+	}
+	r.Write([]byte("]"))
+}
+
 func HdlAbook(r http.ResponseWriter, q *http.Request) {
 	if !HookAuth(r, q) {
 		return
@@ -788,6 +820,7 @@ func main() {
 	http.HandleFunc("/resync", HdlResync)
 	http.HandleFunc("/idler", HdlIdler)
 	http.HandleFunc("/abook", HdlAbook)
+	http.HandleFunc("/ab", HdlAb)
 	err = http.ListenAndServe("127.0.0.1:1336", nil)
 	if err != nil {
 		fmt.Println(err)
