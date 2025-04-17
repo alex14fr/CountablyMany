@@ -138,7 +138,7 @@ func Login(acc map[string]string) (imapconn *IMAPConn, err error) {
 			actok, actokpresent := v["access_token"]
 			if !actokpresent {
 				println("access_token not found")
-				return nil, err
+				return nil, errors.New("access_token not found")
 			}
 			w = "user=" + acc["User"] + "\001auth=Bearer " + actok.(string) + "\001\001"
 			w = base64.StdEncoding.EncodeToString([]byte(w))

@@ -1,1 +1,1 @@
--XPOST https://login.microsoftonline.com/common/oauth2/v2.0/token --data-urlencode client_id=9e5f94bc-e8a4-4e73-b8be-63364c29d753 --data-urlencode grant_type=authorization_code --data-urlencode redirect_uri=https://localhost --data-urlencode code=__AUTH_CODE__
+curl -XPOST https://login.microsoftonline.com/common/oauth2/v2.0/token --data-urlencode client_id=9e5f94bc-e8a4-4e73-b8be-63364c29d753 --data-urlencode grant_type=authorization_code --data-urlencode redirect_uri=https://localhost --data-urlencode code="$1" --trace /tmp/TR
