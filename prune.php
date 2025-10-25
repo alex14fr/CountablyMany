@@ -49,10 +49,12 @@ function mkdir_if_notexist($dir) {
 function prune_disk($config, $mbox, $list) {
 	global $pruned, $maildir;
 	$cmd=mkdir_if_notexist($pruned).mkdir_if_notexist($pruned."/".$config['cmAcc']).mkdir_if_notexist($pruned."/".$config['cmAcc']."/".$mbox);
-	foreach($list as $id) {
-		$cmd.="mv $maildir/".$config['cmAcc']."/$mbox/$id $pruned/".$config['cmAcc']."/$mbox/; ";
-	}
 	system($cmd);
+	foreach($list as $id) {
+		$cmd="mv $maildir/".$config['cmAcc']."/$mbox/$id $pruned/".$config['cmAcc']."/$mbox/; ";
+		system($cmd);
+	}
+	//system($cmd);
 	return($cmd);
 }
 
