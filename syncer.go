@@ -74,7 +74,7 @@ func (imc *IMAPConn) WriteLine(s string) (err error) {
 		fmt.Print("C: [LOGIN command]\r\n")
 	} else if strings.Index(s, "x authenticate ") == 0 {
 		fmt.Print("C: [AUTHENTICATE command]\r\n")
-		fmt.Print("C: " + s + "\r\n")
+		//fmt.Print("C: " + s + "\r\n")
 	} else {
 		fmt.Print("C: " + s + "\r\n")
 	}
