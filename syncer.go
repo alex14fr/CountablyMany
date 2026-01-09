@@ -74,6 +74,7 @@ func (imc *IMAPConn) WriteLine(s string) (err error) {
 		fmt.Print("C: [LOGIN command]\r\n")
 	} else if strings.Index(s, "x authenticate ") == 0 {
 		fmt.Print("C: [AUTHENTICATE command]\r\n")
+		fmt.Print("C: " + s + "\r\n")
 	} else {
 		fmt.Print("C: " + s + "\r\n")
 	}
@@ -145,7 +146,7 @@ func Login(acc map[string]string) (imapconn *IMAPConn, err error) {
 			oauthCache[acc["Server"]] = w
 			oauthTimestamp[acc["Server"]] = time.Now().Unix()
 		}
-		imapconn.WriteLine("x authenticate xoauth2 " + w)
+		imapconn.WriteLine("x AUTHENTICATE XOAUTH2 " + w)
 		println("token = ", w)
 	} else {
 		imapconn.WriteLine("x login " + acc["User"] + " " + acc["Pass"])
