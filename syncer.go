@@ -72,7 +72,7 @@ func (imc *IMAPConn) ReadLineDelim(waitUntil string) (sPre, sPost string, err er
 func (imc *IMAPConn) WriteLine(s string) (err error) {
 	if strings.Index(s, "x login ") == 0 {
 		fmt.Print("C: [LOGIN command]\r\n")
-	} else if strings.Index(s, "x authenticate ") == 0 {
+	} else if strings.Index(s, "x authenticate ") == 0 || strings.Index(s, "x AUTHENTICATE") == 0 {
 		fmt.Print("C: [AUTHENTICATE command]\r\n")
 		//fmt.Print("C: " + s + "\r\n")
 	} else {
@@ -147,7 +147,7 @@ func Login(acc map[string]string) (imapconn *IMAPConn, err error) {
 			oauthTimestamp[acc["Server"]] = time.Now().Unix()
 		}
 		imapconn.WriteLine("x AUTHENTICATE XOAUTH2 " + w)
-		println("token = ", w)
+		//println("token = ", w)
 	} else {
 		imapconn.WriteLine("x login " + acc["User"] + " " + acc["Pass"])
 	}
