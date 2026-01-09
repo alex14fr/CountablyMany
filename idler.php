@@ -39,7 +39,7 @@ function mainloop($config) {
 				$token_iat=time();
 				//print $config['xoauth2_enc_token']."\n";
 			}
-			fwrite($fh, "x authenticate xoauth2 ".$config['xoauth2_enc_token']."\r\n");
+			fwrite($fh, "x AUTHENTICATE XOAUTH2 ".$config['xoauth2_enc_token']."\r\n");
 		}
 		else { 
 			fwrite($fh, "x login ".$config['login']." ".$config['passwd']."\r\n");
