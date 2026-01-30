@@ -1,0 +1,9 @@
+#!/bin/sh
+umask 0077
+rm token_mo365.json
+curl -XPOST https://login.microsoftonline.com/common/oauth2/v2.0/token --data-urlencode client_id=9e5f94bc-e8a4-4e73-b8be-63364c29d753 --data-urlencode grant_type=authorization_code --data-urlencode redirect_uri=https://localhost:16741/ --data-urlencode code="$1" > token_mo365.json
+refresh_tok=$(jq -r ".refresh_token" < token_mo365.json)
+sed -i "s|O365Token=.*|O365Token=$refresh_tok|" CountablyMany.ini
+chmod 0600 CountablyMany.ini
+#sh /home/al/LaunchCM
+

@@ -4,6 +4,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <fcntl.h>
+#include <unistd.h>
+#include <stdlib.h>
 
 #define PORT 16741
 #define ERRMSG "HTTP/1.0 400 Bad request\r\n\r\n"
@@ -18,7 +20,7 @@ void main(void) {
 	addr.sin_family=AF_INET;
 	addr.sin_port=htons(PORT);
 	addr.sin_addr.s_addr=htonl(INADDR_LOOPBACK);
-	bind(s,&addr,sizeof(struct sockaddr_in));
+	bind(s,(struct sockaddr*)(&addr),sizeof(struct sockaddr_in));
 	if(listen(s,1)<0) { perror("listen"); }
 	s2=accept(s,NULL,0);
 	int nread=0;
@@ -45,6 +47,8 @@ void main(void) {
 	puts(code);
 	write(s2,OKMSG,strlen(OKMSG));
 	write(s2,code,strlen(code));
-	char *argv[]={"./OAuthStep2", code, NULL};
-	execve("./OAuthStep2", argv, NULL);
+	char *cmd="./OAuthStep2";
+	if(getenv("STEP2")) cmd=getenv("STEP2");
+	char *argv[]={cmd, code, NULL};
+	execve(cmd, argv, NULL);
 }
