@@ -1,0 +1,5 @@
+#!/bin/sh
+cd $(dirname $0)
+tok=$(curl -v -L -XPOST --data-urlencode client_id=9e5f94bc-e8a4-4e73-b8be-63364c29d753 --data-urlencode grant_type=refresh_token --data-urlencode refresh_token="$(jq -r .refresh_token < token_mo365.json)" https://login.microsoftonline.com/common/oauth2/v2.0/token |jq -r .access_token)
+echo $tok
+
