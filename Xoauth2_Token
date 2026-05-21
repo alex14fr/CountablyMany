@@ -1,0 +1,4 @@
+#!/bin/sh
+
+echo -ne "user=alexandre.janon@universite-paris-saclay.fr\001auth=Bearer $tok\001\001"|base64 -w 0|xclip -i -selection clipboard
+
